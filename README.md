@@ -1,0 +1,112 @@
+# playcal
+
+**One open-source toolkit for AI agents that build games.** It gives your agent a loop it can trust (edit → wait until the editor has really settled → check the change actually landed → look only at what changed → assert), and it is the only tool that checks bot playtests against real players: *"the bot finds level 12 easy, but people will pass it about 41% of the time (CI 30–53%)."*
+
+Unity first, built on top of Unity's official CLI. Godot and Unreal plug into the same core later.
+
+*AI agents: read [llms.txt](llms.txt) first.*
+
+> **Status: pre-alpha (v0.0.1).** Only the event schema and `playcal ingest` work today. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+
+<!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
+
+## Why
+
+Agents working in a game editor fail in boring, repeatable ways:
+
+- they run a tool before compile or domain reload has finished, then reason about stale state;
+- the editor isn't focused, so Play Mode sits on frame 1 while reporting "playing";
+- a modal dialog blocks everything and nobody notices;
+- they report "done" when the prefab was never saved;
+- a single console read or hierarchy dump eats 10k+ tokens.
+
+Unity's official CLI and the community MCP servers give you the building blocks: play, test, capture, console. Nothing ties them into a loop that handles these failures. playcal is that loop, plus the features nobody ships yet: whole-scene runtime state diffs, perf baselines, replay without changing game code, flaky-test quarantine, and calibration against human players.
+
+## Install
+
+Requires Python 3.10+.
+
+```bash
+pipx install git+https://github.com/RizgarOzan/playcal
+playcal modules
+```
+
+A PyPI release (`pipx install playcal`) and the Unity UPM package come with v0.1.
+
+### Install with your AI agent
+
+Paste this into Claude Code, Cursor, Codex or any agent with a shell:
+
+```text
+Install playcal for this project:
+1. Make sure pipx exists (python -m pip install --user pipx && python -m pipx ensurepath).
+2. Run: pipx install git+https://github.com/RizgarOzan/playcal
+3. Run: playcal modules --json  and show me the module list.
+4. Read https://github.com/RizgarOzan/playcal#usage and tell me which commands fit this project.
+Do not change project files yet.
+```
+
+The MCP server and the Claude Code skill are *planned*. When they ship, this section will look like this (not working yet):
+
+```bash
+claude mcp add --transport stdio playcal -- playcal mcp
+code --add-mcp '{"name":"playcal","type":"stdio","command":"playcal","args":["mcp"]}'
+```
+
+There will also be a Cursor install button.
+
+## Usage
+
+Every command can print `--json`, so agents can read the result without scraping text.
+
+### `playcal ingest` (works today)
+
+This command validates gameplay events against [`schema/event-v0.json`](schema/event-v0.json). It accepts JSONL files, or free text that contains `PC0:` blobs. The in-game "send result" button produces those blobs, and players can paste them into any chat.
+
+```bash
+playcal ingest sessions.jsonl --json
+playcal ingest whatsapp-export.txt --paste
+```
+
+Valid events go to `accepted.jsonl`. Every line that fails goes to `rejected.jsonl` with the reason.
+
+The schema doesn't accept unknown fields, so names, emails, device IDs, location and IP can't slip in. See [PRIVACY.md](PRIVACY.md).
+
+## Roadmap
+
+| Module | What it does | State |
+|---|---|---|
+| `ingest` | event schema, validation, paste blobs | ✅ works |
+| `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | planned (next) |
+| `report` | per-level pass rate, attempts, Wilson CI | planned |
+| `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
+| `query` | one query language with field projection over scene, runtime state and logs | planned |
+| `checkpoint` | every agent step is a git-backed, revertible checkpoint | planned |
+| `observe` | console summary (dedupe, first cause), whole-scene runtime diff, screenshots only on red | planned |
+| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | planned |
+| `replay` | frame stepping, recorded input, replay → regression test | planned |
+| `tests` | flaky history and quarantine, affected tests | planned |
+| `lock` | scene/asset locks for several agents at once | planned |
+| Godot, Unreal | same core, new backend | later |
+
+Every row is one module. A module is a Python entry point in the `playcal.modules` group, with optional Editor C#, its own tests and its own benchmark scenario. New features arrive as new modules, not as new tools to install.
+
+## How we'll prove it's better
+
+There's a public benchmark: 20 planted bugs plus scenarios rebuilt from real issue reports (domain reload drop, unfocused editor, modal dialog, compile storm, unsaved prefab, 15 MB hierarchy). Each task runs three ways:
+
+1. plain official Unity CLI;
+2. a popular MCP server;
+3. playcal.
+
+We measure success, *false success*, tokens and time. If playcal doesn't win a row, that row isn't advertised.
+
+Predicting human difficulty with agents isn't a new idea. Roohi et al. ([2021](https://arxiv.org/abs/2107.12061)) did it for a Rovio game with a large player base. What playcal adds is doing it with a small panel (10–30 friends), honest confidence intervals, and open code.
+
+## Contributing
+
+Issues and module ideas are welcome. Read the module contract in [`src/playcal/registry.py`](src/playcal/registry.py), and run tests with `pytest`.
+
+## License
+
+[Apache-2.0](LICENSE). Use it in commercial games. The patent grant is there so studios don't have to ask.

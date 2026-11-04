@@ -1,0 +1,20 @@
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:01:00Z", "type": "session_start"}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:02:00Z", "type": "level_start", "level": "04", "attempt": 1, "seed": 1004}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:03:00Z", "type": "move", "level": "04", "attempt": 1, "moves_used": 1}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:04:00Z", "type": "move", "level": "04", "attempt": 1, "moves_used": 2}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:05:00Z", "type": "move", "level": "04", "attempt": 1, "moves_used": 3}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:06:00Z", "type": "level_fail", "level": "04", "attempt": 1, "moves_used": 3, "moves_left": 0, "goal_left": 4, "duration_ms": 41000}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:07:00Z", "type": "level_start", "level": "04", "attempt": 2, "seed": 1004}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:08:00Z", "type": "move", "level": "04", "attempt": 2, "moves_used": 1}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:09:00Z", "type": "move", "level": "04", "attempt": 2, "moves_used": 2}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:10:00Z", "type": "move", "level": "04", "attempt": 2, "moves_used": 3}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T11:00:00Z", "level": "06", "attempt": 1}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:11:00Z", "type": "level_complete", "level": "04", "attempt": 2, "moves_used": 3, "moves_left": 5, "goal_left": 0, "duration_ms": 41000}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:12:00Z", "type": "level_start", "level": "05", "attempt": 1, "seed": 1005}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:13:00Z", "type": "move", "level": "05", "attempt": 1, "moves_used": 1}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:14:00Z", "type": "move", "level": "05", "attempt": 1, "moves_used": 2}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:15:00Z", "type": "move", "level": "05", "attempt": 1, "moves_used": 3}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:16:00Z", "type": "level_complete", "level": "05", "attempt": 1, "moves_used": 3, "moves_left": 5, "goal_left": 0, "duration_ms": 41000}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:17:00Z", "type": "session_end"}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T10:18:00Z", "type": "level_quit", "level": "06", "attempt": 1}
+{"v": 0, "install_id": "inst_9f3k2a7q", "session_id": "s001", "game": "match3-lab", "game_version": "0.4.0", "ts": "2026-11-04T11:01:00Z", "type": "level_start", "level": "06", "attempt": 0}

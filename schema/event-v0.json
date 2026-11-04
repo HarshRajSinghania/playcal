@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/RizgarOzan/playcal/schema/event-v0.json",
+  "title": "playcal event v0",
+  "description": "One gameplay event. Progression types follow the GameAnalytics start/fail/complete idea. No names, emails, device fingerprints, location or IP.",
+  "type": "object",
+  "required": ["v", "ts", "install_id", "session_id", "game", "game_version", "type"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 0 },
+    "ts": { "type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$", "description": "RFC 3339 UTC or with offset. The pattern is there because many validators skip format checks." },
+    "install_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$", "description": "Random, resettable. Never derived from the device." },
+    "session_id": { "type": "string", "pattern": "^[A-Za-z0-9_-]{4,64}$" },
+    "game": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "game_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "type": { "enum": ["session_start", "level_start", "move", "level_fail", "level_complete", "level_quit", "session_end"] },
+    "level": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "attempt": { "type": "integer", "minimum": 1 },
+    "seed": { "type": "integer" },
+    "moves_used": { "type": "integer", "minimum": 0 },
+    "moves_left": { "type": "integer", "minimum": 0 },
+    "goal_left": { "type": "integer", "minimum": 0 },
+    "duration_ms": { "type": "integer", "minimum": 0 },
+    "props": { "type": "object", "description": "Game-specific extras. Keep them non-personal." }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "enum": ["level_start", "move", "level_fail", "level_complete", "level_quit"] } } },
+      "then": { "required": ["level", "attempt"] }
+    }
+  ]
+}

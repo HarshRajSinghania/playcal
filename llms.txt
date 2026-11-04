@@ -1,0 +1,21 @@
+# playcal
+
+> Open-source toolkit for AI agents working on games (Unity first). Python CLI, every command supports --json. Pre-alpha: only `playcal ingest` works today.
+
+## Install
+- `pipx install git+https://github.com/RizgarOzan/playcal` (Python 3.10+)
+- Check: `playcal modules --json` lists the installed modules.
+- MCP server: planned, not available yet. Do not try `playcal mcp`.
+
+## Commands that work
+- `playcal ingest FILE... [--paste] [--out accepted.jsonl] [--rejected rejected.jsonl] [--json]`: validates gameplay events against schema/event-v0.json. `--paste` pulls `PC0:` blobs out of free text such as a chat export. Exit 0 = ran, 2 = file error.
+
+## Docs
+- [README](README.md): what it is, roadmap, benchmark plan
+- [Event schema](schema/event-v0.json): JSON Schema 2020-12, unknown fields rejected
+- [Privacy](PRIVACY.md): what is and isn't recorded
+- [Module contract](src/playcal/registry.py): how to add a module (entry point group `playcal.modules`)
+
+## Rules for agents
+- Don't edit the user's project files during install.
+- Don't add fields to events. The schema rejects them, and personal data is not allowed.
