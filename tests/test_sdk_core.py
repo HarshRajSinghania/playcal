@@ -52,3 +52,12 @@ def test_frame_samples_feed_baseline(output):
                     "used_memory_bytes": [1000, 1512, 1512, 1400]}  # 5th frame: buffer full
     assert samples(full)["gc_alloc_bytes"] == [0.0, 512.0, 0.0, 0.0]
     assert partial == {"frame_ms": [16.0, 16.0]}
+
+
+def test_input_track_writes_what_python_reads(output):
+    from playcal.replay import parse
+    text = "\n".join(ln[len("REPLAY:"):] for ln in output if ln.startswith("REPLAY:")) + "\n"
+    r = parse(text)
+    assert (r["fps"], r["seed"], r["end"]) == (60, 1234, 59)
+    assert r["input"] == [(12, "move.x", -0.5), (12, "jump", 1.0), (14, "jump", 0.0), (20, "move.x", 0.25)]
+    assert r["marks"] == [(12, "state", "jumping high"), (40, "score", "10")]

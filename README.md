@@ -6,7 +6,7 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.1.0).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `observe`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap`, `observe` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.1.0).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `observe`, `replay`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap`, `observe`, `replay` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -189,6 +189,30 @@ Exit 0 is clean, 1 is red (console errors, a failed check, a read that failed), 
 
 On a live Editor (Unity 6000.3, Pipeline 0.10.0-exp.1) a clean run took about 70 s, most of it the domain reload that entering Play starts (`unity status` shows no Editor for ~20–30 s). Then I added an editor script that logs an error and spawns an object when Play starts: observe reported the error with its file and line, `1 added` in the scene, and saved a real Game view screenshot. Not seen live yet: a project with "Enter Play Mode Options" set to skip the reload, and a console that overflows during the run (the digest says `dropped` when it does).
 
+### `playcal replay` (works on a live Editor)
+
+Record a session's input once, then play it back after every change and see whether the game still does the same thing. The game reads input through the SDK and marks what should come out the same:
+
+```csharp
+float move = PlaycalInput.Axis("move.x", Input.GetAxis("Horizontal"));  // live value, or the recorded one during a replay
+if (PlaycalInput.Button("jump", Input.GetButton("Jump"))) Jump();
+PlaycalReplay.Mark("score", score);                                     // compared frame by frame
+```
+
+```bash
+playcal replay record jump-test --frames 600     # press Play, record 600 frames, leave Play
+playcal replay run jump-test                      # replay with the same frame rate and seed, compare the marks
+# diverged
+#   frame 150: expected x=0.181579992 at 150, got x=0.150087655 at 150
+playcal replay run jump-test --stop-at 120        # pause on frame 120 and stay in Play Mode
+playcal replay step --frames 5                    # advance the paused Editor 5 frames
+playcal replay check jump-test                    # compare the last result again, e.g. with --tolerance
+```
+
+The SDK picks the request up from `.playcal/replays/request` when Play starts, so nothing in the scene has to change. While recording or replaying it sets `Time.captureFramerate` to the recording's fps, so `deltaTime` is the same every frame, and seeds `UnityEngine.Random`. Exit 0 is a match, 1 is a divergence, a replay that ended early, or console errors during the run; `no_sdk` means the request was never read. Read input in `Update`, not `FixedUpdate`, since frames are what's recorded.
+
+On a live Editor (Unity 6000.3, Pipeline 0.10.0-exp.1) I recorded 300 frames from a probe script whose "live" input came from the wall clock, so only the recording could reproduce it. Its marks were a moved value, `Random.value` and the position of a Rigidbody ball rolling on a box. Two replays matched the recording exactly, even with `--tolerance 0`, physics included. With one input changed at frame 150, the run said `diverged` at frame 150. `--stop-at 120` left the Editor paused on replay frame 120, and `step --frames 5` moved it to 125. A record or run takes about 45–55 s, most of it the Play Mode reload. Not checked yet: a person playing on a keyboard, replays across an Editor restart or on another machine, a player build, scenes with many bodies or joints, and the new Input System (route its values through `PlaycalInput` the same way). Since `deltaTime` is fixed, a machine that can't keep up runs the recording in slow motion instead of dropping frames.
+
 ### `playcal baseline` (works today on JSON)
 
 Keeps a perf run as the baseline and fails a later run only when it is slower by more than noise. Feed it per-frame samples, `{"frame_ms": [...], "gc_alloc_bytes": [...]}` or a bare list of frame times:
@@ -262,6 +286,8 @@ Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.
 
 For perf runs, `PlaycalFrames.Begin("level4")` records frame time, GC bytes allocated per frame and total used memory (through `ProfilerRecorder`) and skips the first 30 frames. Call `Save()` at the end and pass the file to `playcal baseline`. GC numbers measured in the Editor include the Editor's own allocations (about 15 KB per frame in our test scene), so take baselines from a player build.
 
+For `playcal replay`, read input through `PlaycalInput.Axis` / `PlaycalInput.Button` and note results with `PlaycalReplay.Mark`; the [replay section](#playcal-replay-works-on-a-live-editor) has the details.
+
 For the visual gate, `PlaycalShots.Capture("level4-start")` saves a screenshot to `persistentDataPath/playcal/shots/`. In a batch-mode test run it renders `Camera.main` instead, since the screen capture never fires there.
 
 ## Roadmap
@@ -280,7 +306,7 @@ For the visual gate, `PlaycalShots.Capture("level4-start")` saves a screenshot t
 | `snap` | save a read, diff two saves with session ids left out | ✅ works, checked across an Editor restart |
 | `observe` | whole-scene runtime diff, screenshots only on red | ✅ works, checked on a live Unity 6000.3 Editor (errors, scene diff, screenshot) |
 | `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | ✅ perf and memory gates, the SDK recorder, and the visual gate as `playcal visual` |
-| `replay` | frame stepping, recorded input, replay → regression test | planned |
+| `replay` | frame stepping, recorded input, replay → regression test | ✅ works, checked on a live Unity 6000.3 Editor (record, match, divergence, stop and step); not yet with a person playing or across restarts |
 | `tests` | flaky history and quarantine, affected tests | ✅ history, flaky detection, quarantine (NUnit3, JUnit) and affected test assemblies from the .asmdef graph |
 | `lock` | scene/asset locks for several agents at once | ✅ works (advisory lock files with expiry) |
 | `doctor` | check the setup before a run | ✅ works |

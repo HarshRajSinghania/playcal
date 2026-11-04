@@ -47,6 +47,7 @@ doctor = "playcal.doctor:MODULE"
 visual = "playcal.visual:MODULE"
 calibrate = "playcal.calibrate:MODULE"
 observe = "playcal.observe:MODULE"
+replay = "playcal.replay:MODULE"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/playcal"]

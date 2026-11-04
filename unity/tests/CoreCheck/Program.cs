@@ -40,3 +40,23 @@ Console.WriteLine("FRAMES:" + frames.ToJson());
 var partial = new FrameSamples();
 partial.Add(16f, 0); partial.Add(16f);
 Console.WriteLine("FRAMES:" + partial.ToJson());
+
+// Replay track for playcal replay: written by C#, read back by C# and by Python.
+var track = new InputTrack(60, 1234);
+track.Set(0, "move.x", 0f);          // 0 is the default, not stored
+track.Set(12, "jump", 1f);
+track.Set(12, "move.x", -0.5f);
+track.Set(13, "jump", 1f);           // unchanged, not stored
+track.Set(14, "jump", 0f);
+track.Set(20, "move.x", 0.1f);
+track.Set(20, "move.x", 0.25f);      // same frame: last value wins
+track.AddMark(12, "state", "jumping high");
+track.AddMark(40, "score", "10");
+track.End(59);
+var text = track.Write();
+var back = InputTrack.Parse(text);
+if (back.Write() != text) throw new Exception("replay round trip changed the text");
+if (back.Value(11, "jump") != 0f || back.Value(13, "jump") != 1f || back.Value(100, "move.x") != 0.25f || back.Value(5, "none") != 0f)
+    throw new Exception("replay Value lookup is wrong");
+if (back.EndFrame != 59 || back.Fps != 60 || back.Seed != 1234 || back.Marks.Count != 2) throw new Exception("replay header or marks lost");
+foreach (var line in text.TrimEnd('\n').Split('\n')) Console.WriteLine("REPLAY:" + line);

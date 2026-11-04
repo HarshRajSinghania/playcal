@@ -44,6 +44,16 @@ PlaycalShots.CaptureCamera("level4-end", cam);         // one camera right away,
 
 `Capture` grabs the whole screen at the end of the frame. In batch mode that moment never comes, so there it renders `Camera.main` instead (overlay UI isn't in that picture, and `-nographics` gives no picture at all). Feed the PNGs to `playcal visual`.
 
+For `playcal replay`, read input through `PlaycalInput` and mark what a replay should reproduce:
+
+```csharp
+float move = PlaycalInput.Axis("move.x", Input.GetAxis("Horizontal"));  // in Update
+bool jump = PlaycalInput.Button("jump", Input.GetButton("Jump"));
+PlaycalReplay.Mark("score", score);
+```
+
+With no replay running these return the live value and `Mark` does nothing. `playcal replay record` / `run` start one through a request file when Play starts; from code, `PlaycalReplay.Record("name", frames: 600)` and `PlaycalReplay.Play("name")` do the same. Files go to `<project>/.playcal/replays/`. The request file is only read in the Editor, and `Record` / `Play` from code haven't been tried in a player build yet.
+
 Frame samples are only frame time, GC bytes and used memory, nothing about the player. In the Editor, GC numbers include the Editor's own allocations, so take baselines from a player build.
 
 Saying under 18 turns recording off and wipes the local log. Nothing leaves the device unless the player pastes the line themselves. See [PRIVACY.md](../../PRIVACY.md).
