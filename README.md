@@ -149,6 +149,8 @@ There's a public benchmark: 20 planted bugs plus scenarios rebuilt from real iss
 
 We measure success, *false success*, tokens and time. If playcal doesn't win a row, that row isn't advertised.
 
+Until the live benchmark exists, [`bench/sim.py`](bench/sim.py) replays those failure modes against a scripted Editor (a write lost in a domain reload, a command that says success and does nothing, Safe Mode). It's a regression guard, not evidence about Unity: in it the naive agent reports 4 false successes out of 6 scenarios and `loop run --verify` reports none.
+
 Predicting human difficulty with agents isn't a new idea. Roohi et al. ([2021](https://arxiv.org/abs/2107.12061)) did it for a Rovio game with a large player base. What playcal adds is doing it with a small panel (10–30 friends), honest confidence intervals, and open code.
 
 ## Contributing
