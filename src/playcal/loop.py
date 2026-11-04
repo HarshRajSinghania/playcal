@@ -127,15 +127,26 @@ def _fault(reason: str, result: dict | None) -> str | None:
     return "infra" if any(c.startswith("UNITY_CLI_") for c in codes) else "task"
 
 
+def _save_checkpoint(repo: str, message: str) -> dict:
+    """Save files before the write. A broken checkpoint is reported, not fatal: the command still runs."""
+    from . import checkpoint as cp
+    try:
+        return cp.save(cp.Repo(repo), message)
+    except cp.GitError as e:
+        return {"error": str(e)}
+
+
 def run_command(runner: Runner, name: str, params: list[str], project: str | None = None, timeout: float = 120,
                 verify: list[str] | None = None, expect: list[str] = (), want_diff: bool = False,
-                **settle_kw) -> dict:
+                checkpoint: str | None = None, **settle_kw) -> dict:
     t0 = time.monotonic()
     digest: dict = {"command": name, "params": params, "before": settle(runner, project, timeout, **settle_kw)}
     if not digest["before"]["settled"]:
         digest["ok"], digest["reason"] = False, digest["before"]["reason"]
         digest["fault"] = _fault(digest["reason"], None)
         return digest
+    if checkpoint is not None:
+        digest["checkpoint"] = _save_checkpoint(checkpoint, f"before {name} {' '.join(params)}".strip())
     snapshot = _call(runner, verify, project) if verify and want_diff else None
     digest["result"] = _call(runner, [name, *params], project)
     digest["after"] = settle(runner, project, timeout, **settle_kw)
@@ -156,6 +167,8 @@ def run_command(runner: Runner, name: str, params: list[str], project: str | Non
 
     digest["ok"], digest["reason"] = reason == "ready", reason
     digest.setdefault("fault", _fault(reason, digest["result"]))
+    if not digest["ok"] and "id" in digest.get("checkpoint", {}):
+        digest["undo"] = f"playcal checkpoint restore {digest['checkpoint']['id']}"
     digest["elapsed_ms"] = round((time.monotonic() - t0) * 1000)
     return digest
 
@@ -171,6 +184,8 @@ def _add_args(p: argparse.ArgumentParser) -> None:
                    help="check on the --verify read (or the command result). PATH=VALUE, PATH!=VALUE, PATH~TEXT, "
                         "or bare PATH (exists). * matches any list item: objects.*.name=Probe. Repeatable")
     p.add_argument("--diff", action="store_true", help="run --verify before the write too and report only what changed")
+    p.add_argument("--checkpoint", nargs="?", const=".", metavar="REPO",
+                   help="save files with playcal checkpoint before the write; on failure the digest says how to undo")
     p.add_argument("--json", action="store_true", help="print the digest as JSON")
 
 
@@ -184,7 +199,8 @@ def _run(args: argparse.Namespace) -> int:
     else:
         verify = shlex.split(args.verify) if args.verify else None
         out = run_command(unity_runner, args.name, args.params, args.project_path, args.timeout,
-                          verify=verify, expect=args.expect, want_diff=args.diff)
+                          verify=verify, expect=args.expect, want_diff=args.diff,
+                          checkpoint=args.checkpoint)
         reason = out["reason"]
     if args.json:
         print(json.dumps(out, ensure_ascii=False))
@@ -200,6 +216,8 @@ def _run(args: argparse.Namespace) -> int:
             print(f"  diff {json.dumps(d, ensure_ascii=False)}")
         if out.get("fault"):
             print(f"  fault: {out['fault']}")
+        if out.get("undo"):
+            print(f"  undo: {out['undo']}")
     return EXIT.get(reason, 1)
 
 

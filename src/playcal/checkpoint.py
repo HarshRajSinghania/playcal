@@ -38,8 +38,11 @@ class Repo:
         env = {**os.environ, **IDENTITY}
         if index:
             env["GIT_INDEX_FILE"] = str(self.index)
-        p = subprocess.run(["git", *args], cwd=cwd or self.root, env=env, capture_output=True, text=True,
-                           encoding="utf-8", errors="replace")
+        try:
+            p = subprocess.run(["git", *args], cwd=cwd or self.root, env=env, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace")
+        except OSError as e:  # no git on PATH, or the folder doesn't exist
+            raise GitError(str(e)) from e
         if check and p.returncode != 0:
             raise GitError(p.stderr.strip() or f"git {args[0]} failed")
         return p.stdout

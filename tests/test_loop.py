@@ -153,4 +153,21 @@ def test_cli_verify_flags_reach_run_command(monkeypatch):
     monkeypatch.setattr(loop, "run_command", fake_run)
     rc = main(["loop", "run", "create", "--verify", "get_hierarchy --depth 1", "--expect", "a=1", "--expect", "b",
                "--diff", "--json"])
-    assert rc == 5 and seen == {"verify": ["get_hierarchy", "--depth", "1"], "expect": ["a=1", "b"], "want_diff": True}
+    assert rc == 5 and seen == {"verify": ["get_hierarchy", "--depth", "1"], "expect": ["a=1", "b"], "want_diff": True,
+                       "checkpoint": None}
+
+
+def test_checkpoint_before_write_and_undo_hint_on_failure(tmp_path):
+    import subprocess
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / "a.txt").write_text("x")
+    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}),
+                                            "get_hierarchy": scene("Main Camera")})
+    out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["objects.*.name=Probe"],
+                           checkpoint=str(tmp_path), **fast())
+    assert out["checkpoint"]["saved"] and out["undo"] == f"playcal checkpoint restore {out['checkpoint']['id']}"
+
+
+def test_checkpoint_outside_git_does_not_block_the_command(tmp_path):
+    out = loop.run_command(Fake([status("ready")]), "x", [], checkpoint=str(tmp_path / "nowhere"), **fast())
+    assert out["ok"] and "error" in out["checkpoint"] and "undo" not in out
