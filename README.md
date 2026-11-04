@@ -6,7 +6,7 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.0.1).** Today the event schema, `ingest`, `report`, `logs`, `loop`, `query`, `snap`, `baseline` (perf), `tests`, `lock`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.0.1).** Today the event schema, `ingest`, `report`, `logs`, `loop`, `query`, `snap`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -231,6 +231,8 @@ playcal doctor --project C:/Games/MyGame
 Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
 
 For perf runs, `PlaycalFrames.Begin("level4")` records frame time, GC bytes allocated per frame and total used memory (through `ProfilerRecorder`) and skips the first 30 frames. Call `Save()` at the end and pass the file to `playcal baseline`. GC numbers measured in the Editor include the Editor's own allocations (about 15 KB per frame in our test scene), so take baselines from a player build.
+
+For the visual gate, `PlaycalShots.Capture("level4-start")` saves a screenshot to `persistentDataPath/playcal/shots/`. In a batch-mode test run it renders `Camera.main` instead, since the screen capture never fires there.
 
 ## Roadmap
 
