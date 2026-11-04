@@ -168,5 +168,5 @@ def _run(args: argparse.Namespace) -> int:
     return 0 if args.action != "check" or out["ok"] else 1
 
 
-MODULE = Module(name="baseline", summary="keep a perf baseline (p95 frame time, GC) and fail only when a run is slower by more than noise",
+MODULE = Module(name="baseline", summary="keep a perf baseline (p95 frame time, GC, memory) and fail only when a run is worse by more than noise",
                 add_args=_add_args, run=_run)

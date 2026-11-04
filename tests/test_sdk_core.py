@@ -48,6 +48,7 @@ def test_attempts_and_quotes_survive(output):
 def test_frame_samples_feed_baseline(output):
     from playcal.baseline import samples
     full, partial = (json.loads(ln[len("FRAMES:"):]) for ln in output if ln.startswith("FRAMES:"))
-    assert full == {"frame_ms": [16.5, 17.25, 33.333, 16.0], "gc_alloc_bytes": [0, 512, 0, 0]}  # 5th frame: buffer full
-    assert samples(full) == {"frame_ms": [16.5, 17.25, 33.333, 16.0], "gc_alloc_bytes": [0.0, 512.0, 0.0, 0.0]}
+    assert full == {"frame_ms": [16.5, 17.25, 33.333, 16.0], "gc_alloc_bytes": [0, 512, 0, 0],
+                    "used_memory_bytes": [1000, 1512, 1512, 1400]}  # 5th frame: buffer full
+    assert samples(full)["gc_alloc_bytes"] == [0.0, 512.0, 0.0, 0.0]
     assert partial == {"frame_ms": [16.0, 16.0]}

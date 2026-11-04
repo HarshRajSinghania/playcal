@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -51,7 +52,7 @@ def take(folder: Path, paths: list[str], owner: str, ttl: float, now: float | No
     for p in paths:
         doc = _read(_file(folder, p))
         if doc is not None and _live(doc, now) and doc["owner"] != owner:
-            held[_key(p)] = {"owner": doc["owner"], "expires_in": round(doc["expires"] - now)}
+            held[_key(p)] = {"owner": doc["owner"], "expires_in": math.ceil(doc["expires"] - now)}
     if held:
         return {"ok": False, "held": held}
     taken = []
@@ -66,11 +67,11 @@ def take(folder: Path, paths: list[str], owner: str, ttl: float, now: float | No
         except FileExistsError:  # someone took it between our check and now
             release(folder, taken, owner)
             other = _read(f) or {"owner": "?", "expires": now}
-            return {"ok": False, "held": {_key(p): {"owner": other["owner"], "expires_in": round(other["expires"] - now)}}}
+            return {"ok": False, "held": {_key(p): {"owner": other["owner"], "expires_in": math.ceil(other["expires"] - now)}}}
         with os.fdopen(fd, "w", encoding="utf-8") as out:
             json.dump(doc, out)
         taken.append(p)
-    return {"ok": True, "taken": [_key(p) for p in taken], "expires_in": round(ttl)}
+    return {"ok": True, "taken": [_key(p) for p in taken], "expires_in": math.ceil(ttl)}
 
 
 def release(folder: Path, paths: list[str], owner: str, force: bool = False) -> dict:
@@ -94,7 +95,7 @@ def list_(folder: Path, now: float | None = None) -> list[dict]:
     for f in sorted(folder.glob("*.json")) if folder.exists() else []:
         doc = _read(f)
         if doc is not None and _live(doc, now):
-            out.append({"path": doc["path"], "owner": doc["owner"], "expires_in": round(doc["expires"] - now)})
+            out.append({"path": doc["path"], "owner": doc["owner"], "expires_in": math.ceil(doc["expires"] - now)})
     return out
 
 

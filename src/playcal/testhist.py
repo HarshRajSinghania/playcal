@@ -162,5 +162,5 @@ def _run(args: argparse.Namespace) -> int:
     return 1 if args.action == "check" and not out["ok"] else 0
 
 
-MODULE = Module(name="tests", summary="test result history: spot flaky tests and fail CI only on real failures",
+MODULE = Module(name="tests", summary="test result history: spot flaky tests, fail CI only on real failures, run only affected test assemblies",
                 add_args=_add_args, run=_run)

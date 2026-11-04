@@ -1,4 +1,4 @@
-// Records frame time and GC allocation per frame into FrameSamples, for `playcal baseline`.
+// Records frame time, GC allocation and used memory per frame into FrameSamples, for `playcal baseline`.
 using System.IO;
 using Unity.Profiling;
 using UnityEngine;
@@ -15,7 +15,7 @@ namespace Playcal
         public int maxFrames = 36000;
 
         FrameSamples samples;
-        ProfilerRecorder gcAlloc;
+        ProfilerRecorder gcAlloc, usedMemory;
         int skipped;
 
         public FrameSamples Samples => samples;
@@ -38,14 +38,20 @@ namespace Playcal
             samples = new FrameSamples(maxFrames);
             skipped = 0;
             gcAlloc = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
+            usedMemory = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "Total Used Memory");
         }
 
-        void OnDisable() => gcAlloc.Dispose();
+        void OnDisable()
+        {
+            gcAlloc.Dispose();
+            usedMemory.Dispose();
+        }
 
         void Update()
         {
             if (skipped < warmupFrames) { skipped++; return; }
-            samples.Add(Time.unscaledDeltaTime * 1000f, gcAlloc.Valid ? gcAlloc.LastValue : -1);
+            samples.Add(Time.unscaledDeltaTime * 1000f, gcAlloc.Valid ? gcAlloc.LastValue : -1,
+                        usedMemory.Valid ? usedMemory.LastValue : -1);
         }
 
         /// <summary>Writes persistentDataPath/playcal/frames-label.json and returns its path.</summary>

@@ -169,7 +169,7 @@ playcal baseline check level4 run-branch.json                 # exit 1 only when
 playcal baseline check level4 run.json --percentile 99 --tolerance 5 --floor frame_ms=0.5
 ```
 
-It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. The Unity SDK's `PlaycalFrames.Begin("level4")` records the samples, and `Save()` writes them where `baseline` can read them. Visual and memory gates aren't built yet.
+It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. The Unity SDK's `PlaycalFrames.Begin("level4")` records the samples, and `Save()` writes them where `baseline` can read them. Its `used_memory_bytes` series goes through the same check, so a run that needs more memory fails the same way; add `--floor used_memory_bytes=1048576` to ignore growth under 1 MB. A visual gate isn't built yet.
 
 ### `playcal tests` (works today)
 
@@ -180,7 +180,7 @@ playcal tests check TestResults.xml        # exit 1 only on failures of tests th
 playcal tests flaky                        # tests that passed and failed on the same commit
 ```
 
-A test counts as flaky once it has both passed and failed on one commit, so the first rerun that passes is what marks it. After that its failures show up as `quarantined` instead of turning the run red. They're still listed, so nobody forgets them. `check` judges the run against the history first and then adds it (`--no-record` skips that). The history is `.playcal/tests/history.jsonl`; keep it in CI's cache or commit it.
+A test counts as flaky once it has both passed and failed on one commit, so the first rerun that passes is what marks it. After that its failures show up as `quarantined` instead of turning the run red. They're still listed, so nobody forgets them. `check` judges the run against the history first and then adds it (`--no-record` skips that). The history is `.playcal/tests/history.jsonl`; keep it in CI's cache or commit it. A flaky test stays quarantined on later commits too, until you fix it and drop its lines from the history.
 
 `affected` says which test assemblies a change can break, so a small change doesn't have to wait for the whole suite:
 
@@ -204,11 +204,21 @@ playcal lock list
 
 Taking several paths is all or nothing. Locks expire, so a crashed agent can't hold a scene forever, and taking your own lock again renews it. `PLAYCAL_OWNER` saves typing `--owner`. A lock only works if every agent asks before it writes; it doesn't stop Unity or git from writing the file. If you use Git Bash, pass Unity paths without a leading `/` (or set `MSYS_NO_PATHCONV=1`), since Git Bash rewrites `/SnapProbe` into a Windows path.
 
+### `playcal doctor` (works today)
+
+Run it first when something won't start. It checks Python, git, the Unity CLI, each Editor the CLI can see (running, stuck on a dialog, in Safe Mode) and, with `--project`, whether the SDK is in `Packages/manifest.json`. It exits 1 if any check fails; `--json` prints the checks as a list.
+
+```bash
+playcal doctor --project C:/Games/MyGame
+# ok    unity cli: answers
+# fail  editor C:\Games\MyGame: running but not answering; usually a modal dialog is open in the Editor
+```
+
 ### Unity SDK (works today)
 
 Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
 
-For perf runs, `PlaycalFrames.Begin("level4")` records frame time and GC bytes allocated per frame (through `ProfilerRecorder`) and skips the first 30 frames. Call `Save()` at the end and pass the file to `playcal baseline`. GC numbers measured in the Editor include the Editor's own allocations (about 15 KB per frame in our test scene), so take baselines from a player build.
+For perf runs, `PlaycalFrames.Begin("level4")` records frame time, GC bytes allocated per frame and total used memory (through `ProfilerRecorder`) and skips the first 30 frames. Call `Save()` at the end and pass the file to `playcal baseline`. GC numbers measured in the Editor include the Editor's own allocations (about 15 KB per frame in our test scene), so take baselines from a player build.
 
 ## Roadmap
 
@@ -225,7 +235,7 @@ For perf runs, `PlaycalFrames.Begin("level4")` records frame time and GC bytes a
 | `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
 | `snap` | save a read, diff two saves with session ids left out | ✅ works, checked across an Editor restart |
 | `observe` | whole-scene runtime diff, screenshots only on red | planned (`snap` covers the diff part) |
-| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf gate and the SDK frame recorder work; visual and memory gates planned |
+| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf and memory gates and the SDK recorder work; visual gate planned |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
 | `tests` | flaky history and quarantine, affected tests | ✅ history, flaky detection, quarantine (NUnit3, JUnit) and affected test assemblies from the .asmdef graph |
 | `lock` | scene/asset locks for several agents at once | ✅ works (advisory lock files with expiry) |
