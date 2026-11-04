@@ -78,7 +78,7 @@ def argv_for(mod: Module, arguments: dict) -> list[str]:
 
 def call(mod: Module, arguments: dict) -> tuple[int, str]:
     """Runs the module like the CLI would, with --json, and returns (exit code, captured output)."""
-    from .cli import build_parser
+    from .cli import parse
 
     out, err = io.StringIO(), io.StringIO()
     argv = [mod.name, *argv_for(mod, arguments)]
@@ -86,7 +86,7 @@ def call(mod: Module, arguments: dict) -> tuple[int, str]:
         argv.insert(1, "--json")
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
         try:
-            args = build_parser().parse_args(argv)
+            args = parse(argv)
             rc = args.func(args)
         except SystemExit as e:  # argparse rejects bad arguments this way
             rc = e.code if isinstance(e.code, int) else 2

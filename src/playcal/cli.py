@@ -40,8 +40,20 @@ def _list_modules(args: argparse.Namespace) -> int:
     return 0
 
 
+def parse(argv: list[str]) -> argparse.Namespace:
+    """Like parse_args, but what follows -- always lands in the module's `params`. argparse before
+    3.12 leaves it unparsed when a nargs="*" positional was already filled (empty) earlier."""
+    parser = build_parser()
+    args, extra = parser.parse_known_args(argv)
+    if extra:
+        if extra[0] != "--" or not hasattr(args, "params"):
+            parser.error(f"unrecognized arguments: {' '.join(extra)}")
+        args.params = [*args.params, *extra[1:]]
+    return args
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = parse(sys.argv[1:] if argv is None else argv)
     return args.func(args)
 
 

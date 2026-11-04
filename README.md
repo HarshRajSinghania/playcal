@@ -103,22 +103,29 @@ Exit code 1 means it found errors.
 
 ### `playcal loop` (early)
 
-`loop settle` waits until the Editor is really ready: two "ready" polls in a row, because a domain reload can flicker. It tells Safe Mode, no Editor and two open Editors apart instead of timing out on all of them.
+`loop settle` waits until the Editor is really ready: two "ready" polls in a row, because a domain reload can flicker. While Unity compiles or reloads, `unity status` shows no Editor at all, so settle asks `unity pipeline list` why: Safe Mode, Unity running but stuck on a dialog (`editor_blocked`), or really no Editor. Two open Editors are reported too, instead of timing out on all of them.
 
 `loop run` settles, runs one `unity command`, settles again, and can check its own work:
 
 ```bash
-playcal loop run create_gameobject --verify "get_hierarchy" --expect "objects.*.name=Probe" --diff --json -- --name Probe
+playcal loop run "gameobject create" --verify "scene get_hierarchy" --expect "result.roots.*.name=Probe" --diff --json -- --name Probe
 ```
 
 `--verify` runs a read command after the write, `--expect` asserts on its JSON (`path=value`, `path!=value`, `path~text`, or a bare `path` for "exists"; `*` matches any item), and `--diff` shows what changed between the read before and after. The digest says `fault: "infra"` when the Editor or CLI broke and `fault: "task"` when the command itself was wrong, so an agent knows whether to retry or rethink. A write that reported success but didn't land fails with `verify_failed` (exit 5).
+
+Two traps we hit on a live Editor (Unity 6000.3, Pipeline 0.10.0-exp.1):
+
+- An Editor with compile errors still says "ready". `--compile` also runs `unity recompile` and fails with `compile_error` (exit 6) and the errors as `file`, `line`, `code`, `message`.
+- Some commands start a reload a few seconds *after* they return (`package resolve` says `requiresRecompile`). loop sees that and waits for the reload to start before it trusts "ready" again; `--reload-wait SECONDS` forces the same wait for anything else, like a script written to disk.
+
+Read, write and `--expect` passed against that Editor. The Safe Mode branch itself hasn't been seen live yet.
 
 ### `playcal query` (works today on JSON)
 
 A full hierarchy dump can be tens of thousands of tokens when the agent needs three names. `query` keeps only what you ask for and says how much it cut:
 
 ```bash
-playcal query --unity "get_hierarchy" --from "**" --where "name~Enemy" --select name --select active --json
+playcal query --unity "scene get_hierarchy" --from "result.roots.**" --where "name~Enemy" --select name --select activeSelf --json
 playcal query scene.json --from data.objects --where "tag=Enemy" --select name
 ```
 
@@ -173,7 +180,7 @@ There's a public benchmark: 20 planted bugs plus scenarios rebuilt from real iss
 
 We measure success, *false success*, tokens and time. If playcal doesn't win a row, that row isn't advertised.
 
-Until the live benchmark exists, [`bench/sim.py`](bench/sim.py) replays those failure modes against a scripted Editor (a write lost in a domain reload, a command that says success and does nothing, Safe Mode). It's a regression guard, not evidence about Unity: in it the naive agent reports 4 false successes out of 6 scenarios and `loop run --verify` reports none.
+Until the live benchmark exists, [`bench/sim.py`](bench/sim.py) replays those failure modes against a scripted Editor (a write lost in a domain reload, a command that says success and does nothing, Safe Mode, an Editor stuck on a dialog), using envelopes shaped like a live Editor's. It's a regression guard, not evidence about Unity: in it the naive agent reports 4 false successes out of 7 scenarios and `loop run --verify` reports none.
 
 Predicting human difficulty with agents isn't a new idea. Roohi et al. ([2021](https://arxiv.org/abs/2107.12061)) did it for a Rovio game with a large player base. What playcal adds is doing it with a small panel (10–30 friends), honest confidence intervals, and open code.
 

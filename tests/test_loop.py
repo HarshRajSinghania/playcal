@@ -154,7 +154,7 @@ def test_cli_verify_flags_reach_run_command(monkeypatch):
     rc = main(["loop", "run", "create", "--verify", "get_hierarchy --depth 1", "--expect", "a=1", "--expect", "b",
                "--diff", "--json"])
     assert rc == 5 and seen == {"verify": ["get_hierarchy", "--depth", "1"], "expect": ["a=1", "b"], "want_diff": True,
-                       "checkpoint": None}
+                       "checkpoint": None, "compile": False, "reload_wait": None}
 
 
 def test_checkpoint_before_write_and_undo_hint_on_failure(tmp_path):

@@ -21,10 +21,12 @@ PROJECT = "C:/Games/Lab"
 class SimEditor:
     """A runner (argv -> (exit code, envelope)) with a timeline. Every call is one tick.
     `states[i]` is the Editor state at tick i (the last one repeats). A write that arrives
-    while the Editor isn't ready is dropped but still reports success, like a reload eating it."""
+    while the Editor isn't ready is dropped but still reports success, like a reload eating it.
+    Envelopes follow a live Unity 6000.3 Editor with Pipeline 0.10.0-exp.1: while it compiles or
+    reloads, `unity status` lists no instance at all; `pipeline list` says projectPath."""
 
-    def __init__(self, states, noop=False, safe_mode=False):
-        self.states, self.noop, self.safe_mode = states, noop, safe_mode
+    def __init__(self, states, noop=False, safe_mode=False, dialog=False):
+        self.states, self.noop, self.safe_mode, self.dialog = states, noop, safe_mode, dialog
         self.tick, self.objects = 0, ["Main Camera"]
 
     def state(self):
@@ -34,11 +36,16 @@ class SimEditor:
         s = self.state()
         self.tick += 1
         if args[0] == "status":
-            inst = [] if self.safe_mode or s == "gone" else [{"project": PROJECT, "state": s}]
-            return 0, {"success": True, "data": {"instances": inst}}
+            if self.safe_mode or self.dialog or s != "ready":
+                return 6, {"success": False, "errors": [{"code": "STATUS_NO_INSTANCES"}], "data": {"instances": []}}
+            return 0, {"success": True, "data": {"instances": [{"project": PROJECT, "state": "ready"}]}}
         if args[0] == "pipeline":
-            return 0, {"data": {"instances": [{"project": PROJECT, "safeMode": {"detected": self.safe_mode}}]}}
+            return 0, {"data": {"instances": [{"projectPath": PROJECT, "isRunning": True, "hasPipelinePackage": True,
+                                               "safeMode": {"detected": True} if self.safe_mode else None,
+                                               "pipelineServer": {"isReachable": not self.dialog}}]}}
         name = args[1]
+        if self.dialog:
+            return 6, {"success": False, "errors": [{"code": "COMMAND_FAILED", "message": "No Pipeline instance found"}]}
         if self.safe_mode:
             return 1, {"success": False, "errors": [{"code": "UNITY_CLI_NO_INSTANCE", "message": "no editor"}]}
         if name == "get_hierarchy":
@@ -57,6 +64,7 @@ SCENARIOS = {
     "compile_storm": dict(states=["compiling"] * 40 + ["ready"]),
     "silent_noop": dict(states=["ready"], noop=True),
     "safe_mode": dict(states=["ready"], safe_mode=True),
+    "dialog_blocked": dict(states=["ready"], dialog=True),
 }
 
 WRITE = ["create_gameobject", "--name", "Probe"]
