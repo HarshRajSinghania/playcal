@@ -6,7 +6,7 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.1.0).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.1.0).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `observe`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap`, `observe` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -173,6 +173,22 @@ Unity's instanceIds only hold within one Editor session, so a plain diff across 
 
 On a live Editor we saved a scene, added an object, and the diff said `added: result.roots[hierarchyPath=/SnapProbe]`. Then we saved, restarted Unity and diffed again: no changes, even though every instanceId was new and Unity had handed one object's old id to another object.
 
+### `playcal observe` (works on a live Editor)
+
+Presses Play, lets the game run a few seconds, and says what happened in one digest: the console errors logged during the run (collapsed and with the first cause, like `logs`), what changed in the scene (with `snap`'s rules), and any `--expect` checks on the scene while it plays. Only a red run takes a screenshot.
+
+```bash
+playcal observe --seconds 5 --expect "result.roots.*.name=Player"
+# errors (task)
+#   LogError: boss has no target  at Assets/Boss.cs:13
+#   scene: 1 added, 0 removed, 0 changed
+#   shot: C:\MyGame\.playcal\observe\observe.png
+```
+
+Exit 0 is clean, 1 is red (console errors, a failed check, a read that failed), and 3 or 4 is the Editor itself (same codes as `loop`). The console mark is taken before Play starts, so errors from earlier don't count. The scene diff is only reported, since a running game is supposed to change; gate on it with `--expect`. `--read CMD` diffs another read instead of `scene get_hierarchy`, `--no-play` diffs two reads `--seconds` apart without touching Play Mode, and an Editor that's already playing is watched and left running.
+
+On a live Editor (Unity 6000.3, Pipeline 0.10.0-exp.1) a clean run took about 70 s, most of it the domain reload that entering Play starts (`unity status` shows no Editor for ~20–30 s). Then I added an editor script that logs an error and spawns an object when Play starts: observe reported the error with its file and line, `1 added` in the scene, and saved a real Game view screenshot. Not seen live yet: a project with "Enter Play Mode Options" set to skip the reload, and a console that overflows during the run (the digest says `dropped` when it does).
+
 ### `playcal baseline` (works today on JSON)
 
 Keeps a perf run as the baseline and fails a later run only when it is slower by more than noise. Feed it per-frame samples, `{"frame_ms": [...], "gc_alloc_bytes": [...]}` or a bare list of frame times:
@@ -262,7 +278,7 @@ For the visual gate, `PlaycalShots.Capture("level4-start")` saves a screenshot t
 | `logs` | console/Editor.log summary: dedupe, first cause, error kinds | ✅ works |
 | `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
 | `snap` | save a read, diff two saves with session ids left out | ✅ works, checked across an Editor restart |
-| `observe` | whole-scene runtime diff, screenshots only on red | planned (`snap` covers the diff part) |
+| `observe` | whole-scene runtime diff, screenshots only on red | ✅ works, checked on a live Unity 6000.3 Editor (errors, scene diff, screenshot) |
 | `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | ✅ perf and memory gates, the SDK recorder, and the visual gate as `playcal visual` |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
 | `tests` | flaky history and quarantine, affected tests | ✅ history, flaky detection, quarantine (NUnit3, JUnit) and affected test assemblies from the .asmdef graph |
@@ -290,7 +306,7 @@ What this says, plainly:
 - playcal is slow. Each `unity status` poll takes 2–3 s and settle wants two in a row, before and after the command. Making that faster is the first open issue.
 - Reading the names of a few objects: the full `scene get_hierarchy` was 5174 bytes, `playcal query` 682. The test scene is tiny; the gap grows with the scene.
 
-Not measured yet: an MCP server as a third arm, agent token use over a whole task, and the unfocused-Editor and modal-dialog cases on a live Editor. [`bench/sim.py`](bench/sim.py) replays those against a scripted Editor in CI. It's a regression guard, not evidence about Unity.
+Not measured yet: an MCP server as a third arm, agent token use over a whole task, and the unfocused-Editor and modal-dialog cases on a live Editor. [`bench/sim.py`](bench/sim.py) replays those against a scripted Editor in CI, plus a write that lands but makes the game throw once Play starts (`loop` alone calls that a success; `observe` catches it). It's a regression guard, not evidence about Unity.
 
 Run it on your own project (it creates and deletes `BenchLive*` objects and one temporary script):
 

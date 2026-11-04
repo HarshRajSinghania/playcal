@@ -1,4 +1,5 @@
-"""The simulated benchmark doubles as a regression guard: loop must never report a write that didn't land."""
+"""The simulated benchmark doubles as a regression guard: loop must never report a write that didn't land,
+and observe must catch a write that lands but breaks the game in Play."""
 import importlib.util
 from pathlib import Path
 
@@ -15,3 +16,4 @@ def test_playcal_has_no_false_success_and_catches_what_naive_misses():
     assert naive["reload_during_write"]["false_success"] and pc["reload_during_write"]["landed"]
     assert pc["silent_noop"]["said"] == "verify_failed/task"
     assert pc["safe_mode"]["said"] == "safe_mode/infra"
+    assert naive["throws_in_play"]["false_success"] and pc["throws_in_play"]["said"] == "errors/task"

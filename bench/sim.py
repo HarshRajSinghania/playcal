@@ -1,8 +1,8 @@
 """Simulated benchmark: a naive agent vs playcal loop against a scripted Editor.
 
 This is NOT a measurement of Unity. It replays failure modes people report (a write sent during a
-domain reload is lost, a command says success and does nothing, Safe Mode after a compile error)
-so we can see whether loop catches them, and keep it that way as the code changes. The real
+domain reload is lost, a command says success and does nothing, Safe Mode after a compile error,
+a write that lands but makes the game throw once Play starts) so we can see whether playcal catches them, and keep it that way as the code changes. The real
 benchmark runs against a live Editor.
 
     python bench/sim.py          # table
@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import sys
 
-from playcal import loop
+from playcal import loop, observe
 
 PROJECT = "C:/Games/Lab"
 
@@ -25,9 +25,9 @@ class SimEditor:
     Envelopes follow a live Unity 6000.3 Editor with Pipeline 0.10.0-exp.1: while it compiles or
     reloads, `unity status` lists no instance at all; `pipeline list` says projectPath."""
 
-    def __init__(self, states, noop=False, safe_mode=False, dialog=False):
-        self.states, self.noop, self.safe_mode, self.dialog = states, noop, safe_mode, dialog
-        self.tick, self.objects = 0, ["Main Camera"]
+    def __init__(self, states, noop=False, safe_mode=False, dialog=False, throws=False):
+        self.states, self.noop, self.safe_mode, self.dialog, self.throws = states, noop, safe_mode, dialog, throws
+        self.tick, self.objects, self.errors, self.reload = 0, ["Main Camera"], [], 0
 
     def state(self):
         return self.states[min(self.tick, len(self.states) - 1)]
@@ -36,7 +36,8 @@ class SimEditor:
         s = self.state()
         self.tick += 1
         if args[0] == "status":
-            if self.safe_mode or self.dialog or s != "ready":
+            if self.reload or self.safe_mode or self.dialog or s != "ready":
+                self.reload = max(0, self.reload - 1)  # entering Play reloads the domain for a poll or two
                 return 6, {"success": False, "errors": [{"code": "STATUS_NO_INSTANCES"}], "data": {"instances": []}}
             return 0, {"success": True, "data": {"instances": [{"project": PROJECT, "state": "ready"}]}}
         if args[0] == "pipeline":
@@ -54,6 +55,18 @@ class SimEditor:
             if s == "ready" and not self.noop:
                 self.objects.append(args[args.index("--name") + 1])
             return 0, {"success": True, "data": {}}
+        if name == "editor.playmode":
+            if args[2] == "start":
+                self.reload = 2
+                if self.throws and "Probe" in self.objects:  # the new object's script throws on its first frame
+                    self.errors.append({"seq": len(self.errors) + 1, "message": "NullReferenceException: Object reference "
+                                        "not set to an instance of an object", "stackTrace": "Probe.Update () (at Assets/Probe.cs:9)"})
+            return 0, {"success": True, "data": {"result": "ok"}}
+        if name == "console":
+            since = int(args[args.index("--since") + 1]) if "--since" in args else 0
+            return 0, {"success": True, "data": {"result": {"cursor": len(self.errors), "entries": self.errors[since:]}}}
+        if name in ("editor", "capture"):
+            return 0, {"success": True, "data": {"result": {"playMode": "stopped"}}}
         return 1, {"success": False, "errors": [{"code": "UNKNOWN_COMMAND"}]}
 
 
@@ -65,6 +78,7 @@ SCENARIOS = {
     "silent_noop": dict(states=["ready"], noop=True),
     "safe_mode": dict(states=["ready"], safe_mode=True),
     "dialog_blocked": dict(states=["ready"], dialog=True),
+    "throws_in_play": dict(states=["ready"], throws=True),
 }
 
 WRITE = ["create_gameobject", "--name", "Probe"]
@@ -85,6 +99,8 @@ def playcal(ed: SimEditor) -> dict:
 
     out = loop.run_command(ed, WRITE[0], WRITE[1:], project=PROJECT, timeout=60, verify=["get_hierarchy"],
                            expect=["objects.*.name=Probe"], sleep=sleep, clock=lambda: t["now"])
+    if out["ok"]:  # the write landed; now press Play and see whether the game still runs
+        out = observe.observe(ed, PROJECT, read=["get_hierarchy"], seconds=1, timeout=60, sleep=sleep, clock=lambda: t["now"])
     return {"reported_ok": out["ok"], "said": f"{out['reason']}/{out['fault']}" if out["fault"] else out["reason"]}
 
 
@@ -95,8 +111,9 @@ def run() -> list[dict]:
             ed = SimEditor(**cfg)
             r = fn(ed)
             landed = "Probe" in ed.objects
+            works = landed and not cfg.get("throws")  # a write that breaks the game in Play is not a success
             rows.append({"scenario": name, "agent": agent, "landed": landed, "reported_ok": r["reported_ok"],
-                         "false_success": r["reported_ok"] and not landed, "said": r["said"], "calls": ed.tick})
+                         "false_success": r["reported_ok"] and not works, "said": r["said"], "calls": ed.tick})
     return rows
 
 
