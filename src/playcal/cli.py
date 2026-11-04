@@ -18,7 +18,8 @@ def build_parser() -> argparse.ArgumentParser:
     m.set_defaults(func=_list_modules)
 
     for mod in load_modules():
-        sp = sub.add_parser(mod.name, help=mod.summary, description=mod.summary)
+        text = mod.summary.replace("%", "%%")  # argparse treats % as a format code
+        sp = sub.add_parser(mod.name, help=text, description=text)
         mod.add_args(sp)
         sp.set_defaults(func=mod.run)
     return p
