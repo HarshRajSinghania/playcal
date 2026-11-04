@@ -3,26 +3,34 @@
   settle  wait until the Editor is really ready: "ready" on several polls in a row,
           so a compile or domain reload that flickers between polls isn't missed.
           Safe Mode (compile errors) is reported as itself, not as "no editor".
-  run     settle -> unity command NAME ... -> settle again.
+  run     settle -> unity command NAME ... -> settle again -> verify.
+          --verify "CMD ARGS" re-reads the Editor after the write, --expect PATH=VALUE checks
+          the read (or the command's own result when there is no --verify), --diff shows only
+          what changed in the --verify read between before and after.
 
+Every digest says whose fault a failure is: "infra" (no Editor, Safe Mode, stuck, CLI broken)
+or "task" (the command failed, or it said it worked but the check disagrees).
 Built on Unity's official CLI (`unity status`, `unity pipeline list`, `unity command`).
-Verify / diff / assert steps come next; the digest shape leaves room for them.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import sys
 import time
 from typing import Callable
 
+from . import checks
 from .registry import Module
 
 Runner = Callable[[list[str]], "tuple[int, dict]"]
 
-EXIT = {"ready": 0, "command_failed": 1, "ambiguous": 2, "timeout": 3, "no_editor": 3, "safe_mode": 4}
+EXIT = {"ready": 0, "command_failed": 1, "ambiguous": 2, "timeout": 3, "no_editor": 3, "safe_mode": 4,
+        "verify_failed": 5}
+INFRA = {"ambiguous", "timeout", "no_editor", "safe_mode"}
 
 
 def unity_runner(args: list[str], timeout: float = 120) -> tuple[int, dict]:
@@ -104,21 +112,50 @@ def _settled(reason: str, project, state, seen, waited: float) -> dict:
     return out
 
 
+def _call(runner: Runner, argv: list[str], project: str | None) -> dict:
+    rc, env = runner(["command", *argv, *(["--project-path", project] if project else [])])
+    return {"success": bool(env.get("success")) and rc == 0, "exit_code": rc,
+            "errors": env.get("errors") or [], "warnings": env.get("warnings") or [], "data": env.get("data")}
+
+
+def _fault(reason: str, result: dict | None) -> str | None:
+    if reason == "ready":
+        return None
+    if reason in INFRA:
+        return "infra"
+    codes = [str(e.get("code", "")) for e in (result or {}).get("errors", [])]
+    return "infra" if any(c.startswith("UNITY_CLI_") for c in codes) else "task"
+
+
 def run_command(runner: Runner, name: str, params: list[str], project: str | None = None, timeout: float = 120,
+                verify: list[str] | None = None, expect: list[str] = (), want_diff: bool = False,
                 **settle_kw) -> dict:
     t0 = time.monotonic()
     digest: dict = {"command": name, "params": params, "before": settle(runner, project, timeout, **settle_kw)}
     if not digest["before"]["settled"]:
         digest["ok"], digest["reason"] = False, digest["before"]["reason"]
+        digest["fault"] = _fault(digest["reason"], None)
         return digest
-    target = ["--project-path", project] if project else []
-    rc, env = runner(["command", name, *params, *target])
-    digest["result"] = {"success": bool(env.get("success")) and rc == 0, "exit_code": rc,
-                        "errors": env.get("errors") or [], "warnings": env.get("warnings") or [], "data": env.get("data")}
+    snapshot = _call(runner, verify, project) if verify and want_diff else None
+    digest["result"] = _call(runner, [name, *params], project)
     digest["after"] = settle(runner, project, timeout, **settle_kw)
-    digest["ok"] = digest["result"]["success"] and digest["after"]["settled"]
-    digest["reason"] = ("ready" if digest["ok"] else
-                        "command_failed" if not digest["result"]["success"] else digest["after"]["reason"])
+    reason = ("command_failed" if not digest["result"]["success"] else
+              digest["after"]["reason"] if not digest["after"]["settled"] else "ready")
+
+    if reason == "ready" and (verify or expect):
+        read = _call(runner, verify, project) if verify else digest["result"]
+        if verify:
+            digest["verify"] = {"command": verify, "success": read["success"], "errors": read["errors"]}
+        digest["checks"] = [checks.check(read["data"], e) for e in expect]
+        if snapshot is not None and snapshot["success"] and read["success"]:
+            digest["diff"] = checks.diff(snapshot["data"], read["data"])
+        if not read["success"]:
+            reason, digest["fault"] = "verify_failed", _fault("command_failed", read)
+        elif not all(c["ok"] for c in digest["checks"]):
+            reason = "verify_failed"
+
+    digest["ok"], digest["reason"] = reason == "ready", reason
+    digest.setdefault("fault", _fault(reason, digest["result"]))
     digest["elapsed_ms"] = round((time.monotonic() - t0) * 1000)
     return digest
 
@@ -129,6 +166,11 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("params", nargs="*", help="passed to the command unchanged; put them after --, e.g. run save_scene -- --name x")
     p.add_argument("--project-path", help="Unity project folder; needed when several Editors are open")
     p.add_argument("--timeout", type=float, default=120, help="seconds to wait for a ready Editor (default 120)")
+    p.add_argument("--verify", metavar="CMD", help='read command run after the write, e.g. "get_hierarchy --depth 1"')
+    p.add_argument("--expect", action="append", default=[], metavar="PATH=VALUE",
+                   help="check on the --verify read (or the command result). PATH=VALUE, PATH!=VALUE, PATH~TEXT, "
+                        "or bare PATH (exists). * matches any list item: objects.*.name=Probe. Repeatable")
+    p.add_argument("--diff", action="store_true", help="run --verify before the write too and report only what changed")
     p.add_argument("--json", action="store_true", help="print the digest as JSON")
 
 
@@ -140,7 +182,9 @@ def _run(args: argparse.Namespace) -> int:
         out = settle(unity_runner, args.project_path, args.timeout)
         reason = out["reason"]
     else:
-        out = run_command(unity_runner, args.name, args.params, args.project_path, args.timeout)
+        verify = shlex.split(args.verify) if args.verify else None
+        out = run_command(unity_runner, args.name, args.params, args.project_path, args.timeout,
+                          verify=verify, expect=args.expect, want_diff=args.diff)
         reason = out["reason"]
     if args.json:
         print(json.dumps(out, ensure_ascii=False))
@@ -150,6 +194,12 @@ def _run(args: argparse.Namespace) -> int:
             print(out["hint"])
         for e in (out.get("result") or {}).get("errors", []):
             print(f"  {e.get('code')}: {e.get('message')}")
+        for c in out.get("checks", []):
+            print(f"  {'ok  ' if c['ok'] else 'FAIL'} {c['expect']}  (got {json.dumps(c['actual'], ensure_ascii=False)})")
+        for d in out.get("diff", []):
+            print(f"  diff {json.dumps(d, ensure_ascii=False)}")
+        if out.get("fault"):
+            print(f"  fault: {out['fault']}")
     return EXIT.get(reason, 1)
 
 

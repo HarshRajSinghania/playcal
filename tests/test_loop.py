@@ -22,6 +22,9 @@ class Fake:
             return 0, self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
         if args[0] == "pipeline":
             return 0, self.pipeline
+        if isinstance(self.command, dict):  # per-command replies; a list plays back in order
+            reply = self.command[args[1]]
+            return reply.pop(0) if isinstance(reply, list) and len(reply) > 1 else reply[0] if isinstance(reply, list) else reply
         return self.command
 
 
@@ -94,10 +97,60 @@ def test_cli_without_unity_installed(monkeypatch, capsys):
 def test_cli_params_after_double_dash(monkeypatch):
     seen = {}
 
-    def fake_run(runner, name, params, project, timeout):
+    def fake_run(runner, name, params, project, timeout, **kw):
         seen.update(name=name, params=params, timeout=timeout)
         return {"reason": "ready", "before": {"states_seen": ["ready"]}}
 
     monkeypatch.setattr(loop, "run_command", fake_run)
     assert main(["loop", "run", "save_scene", "--timeout", "5", "--", "--name", "x"]) == 0
     assert seen == {"name": "save_scene", "params": ["--name", "x"], "timeout": 5.0}
+
+
+def scene(*names):
+    return 0, {"success": True, "data": {"objects": [{"name": n} for n in names]}}
+
+
+def test_verify_catches_a_write_that_did_not_land():
+    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}),
+                                            "get_hierarchy": scene("Main Camera")})
+    out = loop.run_command(fake, "create", ["--name", "Probe"], verify=["get_hierarchy"],
+                           expect=["objects.*.name=Probe"], **fast())
+    assert not out["ok"] and out["reason"] == "verify_failed" and out["fault"] == "task"
+    assert out["checks"][0]["actual"] == ["Main Camera"]
+
+
+def test_verify_and_diff_on_success():
+    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}),
+                                            "get_hierarchy": [scene("Main Camera"), scene("Main Camera", "Probe")]})
+    out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["objects.*.name=Probe"],
+                           want_diff=True, **fast())
+    assert out["ok"] and out["fault"] is None and out["checks"][0]["ok"]
+    assert out["diff"] == [{"path": "objects[name=Probe]", "added": {"name": "Probe"}}]
+    order = [c[1] for c in fake.calls if c[0] == "command"]
+    assert order == ["get_hierarchy", "create", "get_hierarchy"]
+
+
+def test_expect_without_verify_checks_the_command_result():
+    out = loop.run_command(Fake([status("ready")]), "x", [], expect=["ok=1"], **fast())
+    assert out["ok"] and out["checks"] == [{"expect": "ok=1", "ok": True, "actual": 1}]
+
+
+def test_fault_split_infra_vs_task():
+    assert loop.run_command(Fake([status()]), "x", [], timeout=1, **fast())["fault"] == "infra"
+    cli_broke = Fake([status("ready")], command=(127, {"success": False, "errors": [{"code": "UNITY_CLI_MISSING"}]}))
+    assert loop.run_command(cli_broke, "x", [], **fast())["fault"] == "infra"
+    game_broke = Fake([status("ready")], command=(1, {"success": False, "errors": [{"code": "NOT_FOUND"}]}))
+    assert loop.run_command(game_broke, "x", [], **fast())["fault"] == "task"
+
+
+def test_cli_verify_flags_reach_run_command(monkeypatch):
+    seen = {}
+
+    def fake_run(runner, name, params, project, timeout, **kw):
+        seen.update(kw)
+        return {"reason": "verify_failed", "before": {"states_seen": ["ready"]}}
+
+    monkeypatch.setattr(loop, "run_command", fake_run)
+    rc = main(["loop", "run", "create", "--verify", "get_hierarchy --depth 1", "--expect", "a=1", "--expect", "b",
+               "--diff", "--json"])
+    assert rc == 5 and seen == {"verify": ["get_hierarchy", "--depth", "1"], "expect": ["a=1", "b"], "want_diff": True}
