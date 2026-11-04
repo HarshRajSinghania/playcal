@@ -6,7 +6,7 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.0.1).** Only the event schema and `playcal ingest` work today. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.0.1).** Today the event schema, `playcal ingest`, `playcal report` and the Unity SDK work. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -72,13 +72,29 @@ Valid events go to `accepted.jsonl`. Every line that fails goes to `rejected.jso
 
 The schema doesn't accept unknown fields, so names, emails, device IDs, location and IP can't slip in. See [PRIVACY.md](PRIVACY.md).
 
+### `playcal report` (works today)
+
+Per-level pass rates, counted two ways: per player and per attempt. Each rate comes with a 95% Wilson interval, because with 10 players a single "60%" means very little.
+
+```bash
+playcal report accepted.jsonl
+playcal report accepted.jsonl --json
+```
+
+Different `game_version`s stay separate, and levels sort naturally (1, 2, 10).
+
+### Unity SDK (works today)
+
+Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
+
 ## Roadmap
 
 | Module | What it does | State |
 |---|---|---|
 | `ingest` | event schema, validation, paste blobs | ✅ works |
+| `report` | per-level pass rate, attempts, Wilson CI | ✅ works |
+| Unity SDK | level events, PC0 "send result" line, delete-my-data, under-18 off | ✅ works |
 | `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | planned (next) |
-| `report` | per-level pass rate, attempts, Wilson CI | planned |
 | `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
 | `query` | one query language with field projection over scene, runtime state and logs | planned |
 | `checkpoint` | every agent step is a git-backed, revertible checkpoint | planned |

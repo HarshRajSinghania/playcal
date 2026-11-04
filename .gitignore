@@ -6,3 +6,5 @@ build/
 .pytest_cache/
 rejected.jsonl
 accepted.jsonl
+unity/tests/**/bin/
+unity/tests/**/obj/

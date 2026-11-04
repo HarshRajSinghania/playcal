@@ -1,0 +1,9 @@
+{
+  "name": "com.playcal.sdk",
+  "version": "0.0.1",
+  "displayName": "playcal SDK",
+  "description": "Records level start/fail/complete/quit events for small playtests, and gives players one short line to paste back. No personal data.",
+  "unity": "2022.3",
+  "license": "Apache-2.0",
+  "author": { "name": "Rizgar Ozan", "url": "https://github.com/RizgarOzan/playcal" }
+}
