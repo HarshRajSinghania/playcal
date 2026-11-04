@@ -21,7 +21,8 @@ from typing import Any
 from . import checks
 from .registry import Module
 
-VOLATILE = ("instanceId", "instanceID")
+# ids change per Editor session; isDirty flips on every edit and only says "unsaved"
+VOLATILE = ("instanceId", "instanceID", "isDirty")
 STABLE_KEYS = ("hierarchyPath", "path", "guid", "name", "id")
 
 
@@ -77,7 +78,7 @@ def compare(a, b, ignore=VOLATILE, limit: int = 50) -> dict:
 
 def _read_unity(cmd: str, project: str | None):
     from . import loop
-    ready = loop.settle(loop.unity_runner, project, timeout=60)
+    ready = loop.settle(loop.unity_runner, project, timeout=60, stable=1)  # a read: a flicker fails loudly
     if not ready["settled"]:
         raise SnapError(f"Editor not ready: {ready['reason']}. {ready.get('hint', '')}".strip())
     res = loop._call(loop.unity_runner, shlex.split(cmd), project)

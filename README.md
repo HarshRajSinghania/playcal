@@ -120,7 +120,7 @@ Two traps we hit on a live Editor (Unity 6000.3, Pipeline 0.10.0-exp.1):
 
 Read, write and `--expect` passed against that Editor. The Safe Mode branch itself hasn't been seen live yet.
 
-### `playcal query` (works today on JSON)
+### `playcal query` (works today)
 
 A full hierarchy dump can be tens of thousands of tokens when the agent needs three names. `query` keeps only what you ask for and says how much it cut:
 
@@ -144,7 +144,7 @@ playcal checkpoint restore ~1     # one save back; prints how to undo the restor
 
 Restore only rewrites files that differ, so Unity doesn't reimport everything. With `loop run --checkpoint`, every write is preceded by a save and a failed digest carries an `undo` command. Unity only writes scenes and prefabs to disk when they're saved, so unsaved Editor changes aren't in a checkpoint.
 
-### `playcal snap` (works today on JSON)
+### `playcal snap` (works today)
 
 Saves a read under a name and later tells you what changed, so "what did this run do to the scene" is a few lines instead of two dumps:
 
@@ -155,7 +155,9 @@ playcal snap diff before --unity "scene get_hierarchy"     # exit 1 when somethi
 playcal snap diff run-a run-b --json
 ```
 
-Unity's instanceIds only hold within one Editor session, so a plain diff across a restart or into play mode says everything was removed and re-added. snap leaves `instanceId` out and matches objects by `hierarchyPath`, then `path`, `guid`, `name`; two siblings with the same name become `Enemy` and `Enemy#2`. Any JSON file works, not only Unity reads. Saves go to `.playcal/snaps/`.
+Unity's instanceIds only hold within one Editor session, so a plain diff across a restart or into play mode says everything was removed and re-added. snap leaves `instanceId` out and matches objects by `hierarchyPath`, then `path`, `guid`, `name`; two siblings with the same name become `Enemy` and `Enemy#2`. `isDirty` is left out too, since it flips on every edit. Any JSON file works, not only Unity reads. Saves go to `.playcal/snaps/`.
+
+On a live Editor we saved a scene, added an object, and the diff said `added: result.roots[hierarchyPath=/SnapProbe]`. Then we saved, restarted Unity and diffed again: no changes, even though every instanceId was new and Unity had handed one object's old id to another object.
 
 ### `playcal baseline` (works today on JSON)
 
@@ -167,7 +169,7 @@ playcal baseline check level4 run-branch.json                 # exit 1 only when
 playcal baseline check level4 run.json --percentile 99 --tolerance 5 --floor frame_ms=0.5
 ```
 
-It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. Visual and memory gates aren't built yet, and nothing in the Unity SDK records frame samples yet either; for now you bring the JSON.
+It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. The Unity SDK's `PlaycalFrames.Begin("level4")` records the samples, and `Save()` writes them where `baseline` can read them. Visual and memory gates aren't built yet.
 
 ### `playcal tests` (works today)
 
@@ -180,9 +182,24 @@ playcal tests flaky                        # tests that passed and failed on the
 
 A test counts as flaky once it has both passed and failed on one commit, so the first rerun that passes is what marks it. After that its failures show up as `quarantined` instead of turning the run red. They're still listed, so nobody forgets them. `check` judges the run against the history first and then adds it (`--no-record` skips that). The history is `.playcal/tests/history.jsonl`; keep it in CI's cache or commit it.
 
+### `playcal lock` (works today)
+
+When two agents, or an agent and a person, work on one project, they shouldn't both edit `Level4.unity`. `lock` takes a lock file under `.playcal/locks/`:
+
+```bash
+playcal lock take Assets/Scenes/Level4.unity --owner agent-a --ttl 30m   # exit 1 and who holds it, if taken
+playcal lock check Assets/Scenes/Level4.unity --owner agent-b
+playcal lock release Assets/Scenes/Level4.unity --owner agent-a
+playcal lock list
+```
+
+Taking several paths is all or nothing. Locks expire, so a crashed agent can't hold a scene forever, and taking your own lock again renews it. `PLAYCAL_OWNER` saves typing `--owner`. A lock only works if every agent asks before it writes; it doesn't stop Unity or git from writing the file. If you use Git Bash, pass Unity paths without a leading `/` (or set `MSYS_NO_PATHCONV=1`), since Git Bash rewrites `/SnapProbe` into a Windows path.
+
 ### Unity SDK (works today)
 
 Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
+
+For perf runs, `PlaycalFrames.Begin("level4")` records frame time and GC bytes allocated per frame (through `ProfilerRecorder`) and skips the first 30 frames. Call `Save()` at the end and pass the file to `playcal baseline`. GC numbers measured in the Editor include the Editor's own allocations (about 15 KB per frame in our test scene), so take baselines from a player build.
 
 ## Roadmap
 
@@ -193,16 +210,16 @@ Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.
 | Unity SDK | level events, PC0 "send result" line, delete-my-data, under-18 off | ✅ works |
 | `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | ✅ read, write and `--expect` checked on a live Unity 6000.3 Editor; Safe Mode branch not seen live |
 | `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
-| `query` | pick, filter and project fields from any JSON result (file, stdin or a Unity read command) | 🟡 works on JSON; Unity shapes not checked live |
+| `query` | pick, filter and project fields from any JSON result (file, stdin or a Unity read command) | ✅ works on JSON and on live `scene get_hierarchy` reads |
 | `checkpoint` | every agent step is a git-backed, revertible checkpoint | ✅ works (`loop run --checkpoint` saves before each write) |
 | `logs` | console/Editor.log summary: dedupe, first cause, error kinds | ✅ works |
 | `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
-| `snap` | save a read, diff two saves with session ids left out | ✅ works on JSON |
+| `snap` | save a read, diff two saves with session ids left out | ✅ works, checked across an Editor restart |
 | `observe` | whole-scene runtime diff, screenshots only on red | planned (`snap` covers the diff part) |
 | `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf gate works on JSON; visual, memory and an SDK recorder planned |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
 | `tests` | flaky history and quarantine, affected tests | 🟡 history, flaky detection and quarantine work (NUnit3, JUnit); affected tests planned |
-| `lock` | scene/asset locks for several agents at once | planned |
+| `lock` | scene/asset locks for several agents at once | ✅ works (advisory lock files with expiry) |
 | Godot, Unreal | same core, new backend | later |
 
 Every row is one module. A module is a Python entry point in the `playcal.modules` group, with optional Editor C#, its own tests and its own benchmark scenario. New features arrive as new modules, not as new tools to install.

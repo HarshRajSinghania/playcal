@@ -31,3 +31,11 @@ if (off.Lines.Count != 0) throw new Exception("disabled log wrote lines");
 foreach (var line in log.Lines) Console.WriteLine(line);
 foreach (var line in later.Lines) Console.WriteLine(line);
 Console.WriteLine(Paste.Encode(log.Lines));
+
+// Frame samples for playcal baseline; one unknown GC value drops gc_alloc_bytes.
+var frames = new FrameSamples(4);
+frames.Add(16.5f, 0); frames.Add(17.25f, 512); frames.Add(33.333f, 0); frames.Add(16f, 0); frames.Add(99f, 0);
+Console.WriteLine("FRAMES:" + frames.ToJson());
+var partial = new FrameSamples();
+partial.Add(16f, 0); partial.Add(16f);
+Console.WriteLine("FRAMES:" + partial.ToJson());

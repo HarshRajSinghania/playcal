@@ -52,7 +52,7 @@ def _add_args(p: argparse.ArgumentParser) -> None:
 def _load(args) -> tuple:
     if args.unity:
         from . import loop
-        ready = loop.settle(loop.unity_runner, args.project_path, timeout=60)
+        ready = loop.settle(loop.unity_runner, args.project_path, timeout=60, stable=1)  # a read: a flicker fails loudly
         if not ready["settled"]:
             return None, ready
         res = loop._call(loop.unity_runner, shlex.split(args.unity), args.project_path)

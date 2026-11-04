@@ -43,3 +43,11 @@ def test_attempts_and_quotes_survive(output):
     events = [json.loads(ln) for ln in output if ln.startswith("{")]
     assert [e["attempt"] for e in events if e["type"] == "level_start"] == [1, 2, 1, 3]
     assert any(e.get("level") == 'lv "quoted"' for e in events)
+
+
+def test_frame_samples_feed_baseline(output):
+    from playcal.baseline import samples
+    full, partial = (json.loads(ln[len("FRAMES:"):]) for ln in output if ln.startswith("FRAMES:"))
+    assert full == {"frame_ms": [16.5, 17.25, 33.333, 16.0], "gc_alloc_bytes": [0, 512, 0, 0]}  # 5th frame: buffer full
+    assert samples(full) == {"frame_ms": [16.5, 17.25, 33.333, 16.0], "gc_alloc_bytes": [0.0, 512.0, 0.0, 0.0]}
+    assert partial == {"frame_ms": [16.0, 16.0]}

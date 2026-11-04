@@ -27,4 +27,14 @@ string line = PlaycalLog.CopyResult();               // "send result" button
 PlaycalLog.DeleteMyData();                           // "delete my data" button
 ```
 
+For a perf baseline, record a run and hand the file to `playcal baseline`:
+
+```csharp
+var frames = PlaycalFrames.Begin("level4");          // skips the first 30 frames
+// ... play the level ...
+string path = frames.Save();                          // persistentDataPath/playcal/frames-level4.json
+```
+
+Frame samples are only frame time and GC bytes, nothing about the player. In the Editor, GC numbers include the Editor's own allocations, so take baselines from a player build.
+
 Saying under 18 turns recording off and wipes the local log. Nothing leaves the device unless the player pastes the line themselves. See [PRIVACY.md](../../PRIVACY.md).
