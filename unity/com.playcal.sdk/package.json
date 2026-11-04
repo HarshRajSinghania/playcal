@@ -1,6 +1,6 @@
 {
   "name": "com.playcal.sdk",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "displayName": "playcal SDK",
   "description": "Records level start/fail/complete/quit events for small playtests, and gives players one short line to paste back. No personal data.",
   "unity": "2022.3",
