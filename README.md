@@ -6,7 +6,7 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.0.1).** Today the event schema, `playcal ingest`, `playcal report`, `playcal logs`, the MCP server and the Unity SDK work. `playcal loop` works against a scripted fake of the Unity CLI and is being tried on a live Editor now. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.0.1).** Today the event schema, `ingest`, `report`, `logs`, `loop`, `query`, `snap`, `baseline` (perf), `tests`, `lock`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -182,6 +182,15 @@ playcal tests flaky                        # tests that passed and failed on the
 
 A test counts as flaky once it has both passed and failed on one commit, so the first rerun that passes is what marks it. After that its failures show up as `quarantined` instead of turning the run red. They're still listed, so nobody forgets them. `check` judges the run against the history first and then adds it (`--no-record` skips that). The history is `.playcal/tests/history.jsonl`; keep it in CI's cache or commit it.
 
+`affected` says which test assemblies a change can break, so a small change doesn't have to wait for the whole suite:
+
+```bash
+playcal tests affected                     # uncommitted work; --base main for a branch
+# -runTests -assemblyNames "Game.UI.Tests"
+```
+
+It reads the project's `.asmdef` and `.asmref` files (names and `GUID:` references), puts each changed script in the assembly of the nearest asmdef above it, and follows references outward to the test assemblies. Scripts with no asmdef go to `Assembly-CSharp` or `Assembly-CSharp-Editor`. A scene, prefab, setting or `Packages/manifest.json` change can't be traced through code, so it says so and asks for a full run. Packages referenced with `file:` from outside the project aren't scanned.
+
 ### `playcal lock` (works today)
 
 When two agents, or an agent and a person, work on one project, they shouldn't both edit `Level4.unity`. `lock` takes a lock file under `.playcal/locks/`:
@@ -216,9 +225,9 @@ For perf runs, `PlaycalFrames.Begin("level4")` records frame time and GC bytes a
 | `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
 | `snap` | save a read, diff two saves with session ids left out | ✅ works, checked across an Editor restart |
 | `observe` | whole-scene runtime diff, screenshots only on red | planned (`snap` covers the diff part) |
-| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf gate works on JSON; visual, memory and an SDK recorder planned |
+| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf gate and the SDK frame recorder work; visual and memory gates planned |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
-| `tests` | flaky history and quarantine, affected tests | 🟡 history, flaky detection and quarantine work (NUnit3, JUnit); affected tests planned |
+| `tests` | flaky history and quarantine, affected tests | ✅ history, flaky detection, quarantine (NUnit3, JUnit) and affected test assemblies from the .asmdef graph |
 | `lock` | scene/asset locks for several agents at once | ✅ works (advisory lock files with expiry) |
 | Godot, Unreal | same core, new backend | later |
 

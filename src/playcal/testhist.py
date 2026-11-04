@@ -16,6 +16,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from . import affected
 from .registry import Module
 
 NUNIT = {"passed": "pass", "failed": "fail", "skipped": "skip", "inconclusive": "skip", "ignored": "skip"}
@@ -98,10 +99,13 @@ def check(folder: Path, results: list[dict]) -> dict:
 
 
 def _add_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("action", choices=["record", "check", "flaky"],
+    p.add_argument("action", choices=["record", "check", "flaky", "affected"],
                    help="record FILE...: add results to the history. check FILE...: fail only on non-flaky "
-                        "failures, then record. flaky: list tests that passed and failed on one commit")
-    p.add_argument("files", nargs="*", help="NUnit3 (Unity -testResults) or JUnit XML files")
+                        "failures, then record. flaky: list tests that passed and failed on one commit. "
+                        "affected [PATH...]: test assemblies a change can break (default: git diff --base)")
+    p.add_argument("files", nargs="*", help="NUnit3 (Unity -testResults) or JUnit XML files; for affected, changed paths")
+    p.add_argument("--base", default="HEAD", help="affected: git ref to diff against (default HEAD: uncommitted work)")
+    p.add_argument("--project", default=".", help="affected: Unity project folder (default .)")
     p.add_argument("--commit", help="commit the run belongs to (default: git rev-parse HEAD)")
     p.add_argument("--dir", default=".playcal/tests", help="where the history lives (default .playcal/tests)")
     p.add_argument("--no-record", action="store_true", help="check without adding this run to the history")
@@ -114,6 +118,11 @@ def _run(args: argparse.Namespace) -> int:
     try:
         if args.action == "flaky":
             out = flaky(history(folder))
+        elif args.action == "affected":
+            root = Path(args.project)
+            if not (root / "Assets").is_dir():
+                raise TestsError(f"{root}: no Assets folder, pass --project")
+            out = affected.affected(root, args.files or affected.changed_files(root, args.base))
         else:
             if not args.files:
                 raise TestsError(f"{args.action} needs at least one results file")
@@ -125,11 +134,19 @@ def _run(args: argparse.Namespace) -> int:
                     out["recorded"] = record(folder, results, commit)
             else:
                 out = {"recorded": record(folder, results, commit), "commit": commit}
-    except (TestsError, OSError, json.JSONDecodeError) as e:
+    except (TestsError, OSError, ValueError) as e:
         print(f"playcal tests: {e}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(out, ensure_ascii=False))
+    elif args.action == "affected":
+        for p in out["unmapped"]:
+            print(f"can't trace {p}: run every test")
+        names = out["all_tests"] if out["run_all"] else out["assemblies"]
+        if names:
+            print('-runTests -assemblyNames "' + ";".join(names) + '"')
+        else:
+            print("no test assembly depends on this change")
     elif args.action == "flaky":
         for t, s in out.items():
             print(f"{t}: failed {s['fails']} of {s['runs']} runs, mixed on {s['commits']} commit(s)")
