@@ -6,7 +6,7 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.0.1).** Today the event schema, `ingest`, `report`, `logs`, `loop`, `query`, `snap`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.0.1).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -88,6 +88,20 @@ playcal report accepted.jsonl --json
 ```
 
 Different `game_version`s stay separate, and levels sort naturally (1, 2, 10).
+
+### `playcal calibrate` (works today)
+
+Bots can play every level on every build, but you want to know how people will do. `calibrate` takes the bot runs plus a small human panel that played some of the levels, learns how bot pass rates map to human ones, and predicts the human rate for every level the bots played, each with a 95% interval.
+
+```bash
+playcal calibrate --human panel.jsonl --bot bots.jsonl
+# version    level      bot      predicted human   human seen
+# 1          03         50%        35% [21%-52%]     36% n=25  *
+# 1          06         67%        50% [33%-66%]            -
+# leave-one-out: 5/5 human rates inside their interval, median error 4 points.
+```
+
+Both files use the same event schema. It fits human logits to bot logits per level with a random-effects regression, so levels that the bots get wrong in their own way make every interval wider instead of quietly pulling the line. You need humans on at least 3 levels (5+ attempts each, `--min-attempts`). From 4 levels on it also leaves each one out in turn and checks whether its real rate lands in the predicted interval; that line tells you how far to trust the rest. With a handful of levels the intervals are wide, and that's the honest answer.
 
 ### `playcal logs` (works today)
 
@@ -242,7 +256,7 @@ For the visual gate, `PlaycalShots.Capture("level4-start")` saves a screenshot t
 | `report` | per-level pass rate, attempts, Wilson CI | ✅ works |
 | Unity SDK | level events, PC0 "send result" line, delete-my-data, under-18 off | ✅ works |
 | `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | ✅ read, write and `--expect` checked on a live Unity 6000.3 Editor; Safe Mode branch not seen live |
-| `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
+| `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | ✅ works on attempt pass rates; not yet checked against a real panel |
 | `query` | pick, filter and project fields from any JSON result (file, stdin or a Unity read command) | ✅ works on JSON and on live `scene get_hierarchy` reads |
 | `checkpoint` | every agent step is a git-backed, revertible checkpoint | ✅ works (`loop run --checkpoint` saves before each write) |
 | `logs` | console/Editor.log summary: dedupe, first cause, error kinds | ✅ works |
