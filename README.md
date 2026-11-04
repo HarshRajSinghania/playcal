@@ -1,12 +1,12 @@
 # playcal
 
-**One open-source toolkit for AI agents that build games.** It gives your agent a loop it can trust (edit → wait until the editor has really settled → check the change actually landed → look only at what changed → assert), and it is the only tool that checks bot playtests against real players: *"the bot finds level 12 easy, but people will pass it about 41% of the time (CI 30–53%)."*
+**One open-source toolkit for AI agents that build games.** It gives your agent a loop it can trust (edit → wait until the editor has really settled → check the change actually landed → look only at what changed → assert), and it checks bot playtests against real players: *"the bot finds level 12 easy, but people will pass it about 41% of the time (CI 30–53%)."*
 
 Unity first, built on top of Unity's official CLI. Godot and Unreal plug into the same core later.
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.0.1).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.1.0).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -20,7 +20,7 @@ Agents working in a game editor fail in boring, repeatable ways:
 - they report "done" when the prefab was never saved;
 - a single console read or hierarchy dump eats 10k+ tokens.
 
-Unity's official CLI and the community MCP servers give you the building blocks: play, test, capture, console. Nothing ties them into a loop that handles these failures. playcal is that loop, plus the features nobody ships yet: whole-scene runtime state diffs, perf baselines, replay without changing game code, flaky-test quarantine, and calibration against human players.
+Unity's official CLI and the community MCP servers give you the building blocks: play, test, capture, console. Nothing ties them into a loop that handles these failures. playcal is that loop, plus scene diffs that survive an Editor restart, perf and screenshot gates, flaky-test quarantine, and calibration against human players. See the [benchmark](#benchmark) for what the loop does and doesn't buy you on a live Editor.
 
 ## Install
 
@@ -31,7 +31,7 @@ pipx install git+https://github.com/RizgarOzan/playcal
 playcal modules
 ```
 
-A PyPI release (`pipx install playcal`) and the Unity UPM package come with v0.1.
+`pipx install playcal` works once v0.1.0 is on PyPI. The Unity SDK installs from a git URL, see [Unity SDK](#unity-sdk-works-today).
 
 ### Install with your AI agent
 
@@ -272,23 +272,39 @@ For the visual gate, `PlaycalShots.Capture("level4-start")` saves a screenshot t
 
 Every row is one module. A module is a Python entry point in the `playcal.modules` group, with optional Editor C#, its own tests and its own benchmark scenario. New features arrive as new modules, not as new tools to install.
 
-## How we'll prove it's better
+## Benchmark
 
-There's a public benchmark: 20 planted bugs plus scenarios rebuilt from real issue reports (domain reload drop, unfocused editor, modal dialog, compile storm, unsaved prefab, 15 MB hierarchy). Each task runs three ways:
+[`bench/live.py`](bench/live.py) runs one write against a real, open Editor in four states, two ways: a naive agent that sends the plain `unity command` and trusts `success`, and `playcal loop run` with a read-back check. "Landed" is read back from the Editor afterwards, not taken from either side's word. Unity 6000.3.9f1, Pipeline 0.10.0-exp.1, Windows 11, 3 rounds:
 
-1. plain official Unity CLI;
-2. a popular MCP server;
-3. playcal.
+| Editor state | naive landed | playcal landed | false successes (either) | median time naive / playcal |
+|---|---|---|---|---|
+| idle | 3/3 | 3/3 | 0 | 2.7 s / 24.0 s |
+| mid domain reload | **0/3** | **3/3** | 0 | 2.6 s / 51.7 s |
+| in Play Mode (write refused) | 0/3 | 0/3 | 0 | 2.8 s / 28.1 s |
+| bad value (string into a float) | 0/3 | 0/3 | 0 | 3.5 s / 21.9 s |
 
-We measure success, *false success*, tokens and time. If playcal doesn't win a row, that row isn't advertised.
+What this says, plainly:
 
-Until the live benchmark exists, [`bench/sim.py`](bench/sim.py) replays those failure modes against a scripted Editor (a write lost in a domain reload, a command that says success and does nothing, Safe Mode, an Editor stuck on a dialog), using envelopes shaped like a live Editor's. It's a regression guard, not evidence about Unity: in it the naive agent reports 4 false successes out of 7 scenarios and `loop run --verify` reports none.
+- A write sent while Unity reloads is dropped by the plain CLI and lands through playcal. The reload window was really hit in 6 of 6 runs.
+- Unity's CLI is stricter than I expected. It refused Play Mode writes and bad values loudly, so neither side reported a single false success here. playcal's digest does add which kind of failure it was (`fault: task` for both of those), so an agent knows not to just retry.
+- playcal is slow. Each `unity status` poll takes 2–3 s and settle wants two in a row, before and after the command. Making that faster is the first open issue.
+- Reading the names of a few objects: the full `scene get_hierarchy` was 5174 bytes, `playcal query` 682. The test scene is tiny; the gap grows with the scene.
+
+Not measured yet: an MCP server as a third arm, agent token use over a whole task, and the unfocused-Editor and modal-dialog cases on a live Editor. [`bench/sim.py`](bench/sim.py) replays those against a scripted Editor in CI. It's a regression guard, not evidence about Unity.
+
+Run it on your own project (it creates and deletes `BenchLive*` objects and one temporary script):
+
+```bash
+python bench/live.py --project-path C:/path/to/Project --repeat 3
+```
 
 Predicting human difficulty with agents isn't a new idea. Roohi et al. ([2021](https://arxiv.org/abs/2107.12061)) did it for a Rovio game with a large player base. What playcal adds is doing it with a small panel (10–30 friends), honest confidence intervals, and open code.
 
 ## Contributing
 
-Issues and module ideas are welcome. Read the module contract in [`src/playcal/registry.py`](src/playcal/registry.py), and run tests with `pytest`.
+The most useful thing you can send is a real case where an agent and a Unity Editor got out of sync: what the agent ran, what it said, what was actually true. There's an issue template for it. After that: new modules, and a Godot or Unreal backend if you know those editors' APIs.
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the setup (`pip install -e ".[dev]"` and `pytest`, no Unity needed for most of it) and the few ground rules. Please also read the [code of conduct](CODE_OF_CONDUCT.md). Security problems go through [SECURITY.md](SECURITY.md), not public issues.
 
 ## License
 
