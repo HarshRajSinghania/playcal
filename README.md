@@ -169,6 +169,17 @@ playcal baseline check level4 run.json --percentile 99 --tolerance 5 --floor fra
 
 It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. Visual and memory gates aren't built yet, and nothing in the Unity SDK records frame samples yet either; for now you bring the JSON.
 
+### `playcal tests` (works today)
+
+Keeps a history of test results and tells a flaky failure from a real one. It reads what Unity's `-testResults` writes (NUnit3 XML) and JUnit XML:
+
+```bash
+playcal tests check TestResults.xml        # exit 1 only on failures of tests that aren't flaky
+playcal tests flaky                        # tests that passed and failed on the same commit
+```
+
+A test counts as flaky once it has both passed and failed on one commit, so the first rerun that passes is what marks it. After that its failures show up as `quarantined` instead of turning the run red. They're still listed, so nobody forgets them. `check` judges the run against the history first and then adds it (`--no-record` skips that). The history is `.playcal/tests/history.jsonl`; keep it in CI's cache or commit it.
+
 ### Unity SDK (works today)
 
 Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
@@ -190,7 +201,7 @@ Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.
 | `observe` | whole-scene runtime diff, screenshots only on red | planned (`snap` covers the diff part) |
 | `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf gate works on JSON; visual, memory and an SDK recorder planned |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
-| `tests` | flaky history and quarantine, affected tests | planned |
+| `tests` | flaky history and quarantine, affected tests | 🟡 history, flaky detection and quarantine work (NUnit3, JUnit); affected tests planned |
 | `lock` | scene/asset locks for several agents at once | planned |
 | Godot, Unreal | same core, new backend | later |
 
