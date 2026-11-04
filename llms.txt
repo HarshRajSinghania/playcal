@@ -10,6 +10,8 @@
 ## Commands that work
 - `playcal ingest FILE... [--paste] [--out accepted.jsonl] [--rejected rejected.jsonl] [--json]`: validates gameplay events against schema/event-v0.json. `--paste` pulls `PC0:` blobs out of free text such as a chat export. Exit 0 = ran, 2 = file error.
 - `playcal report FILE... [--json]`: per-level pass rate per player and per attempt with 95% Wilson CI, quit rate, median attempts to pass. Feed it ingest's accepted.jsonl.
+- `playcal loop settle [--project-path P] [--timeout S] [--json]`: waits until the Unity Editor reports ready on two polls in a row. Reasons: ready (exit 0), timeout / no_editor (3), safe_mode (4, compile errors: fix C# then restart Unity), ambiguous (2, pass --project-path).
+- `playcal loop run NAME [--project-path P] [--json] -- PARAMS...`: settle, `unity command NAME PARAMS`, settle again; one JSON digest. Early: not yet tested on a live Editor.
 - Unity SDK: add `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk` in Package Manager. API in unity/com.playcal.sdk/README.md.
 
 ## Docs

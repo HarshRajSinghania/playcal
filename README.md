@@ -94,7 +94,7 @@ Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.
 | `ingest` | event schema, validation, paste blobs | ✅ works |
 | `report` | per-level pass rate, attempts, Wilson CI | ✅ works |
 | Unity SDK | level events, PC0 "send result" line, delete-my-data, under-18 off | ✅ works |
-| `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | planned (next) |
+| `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | 🟡 `settle` and `run` work against fakes; not yet tried on a live Editor. verify/diff/assert next |
 | `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
 | `query` | one query language with field projection over scene, runtime state and logs | planned |
 | `checkpoint` | every agent step is a git-backed, revertible checkpoint | planned |
