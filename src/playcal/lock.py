@@ -52,7 +52,7 @@ def take(folder: Path, paths: list[str], owner: str, ttl: float, now: float | No
     for p in paths:
         doc = _read(_file(folder, p))
         if doc is not None and _live(doc, now) and doc["owner"] != owner:
-            held[_key(p)] = {"owner": doc["owner"], "expires_in": math.ceil(doc["expires"] - now)}
+            held[_key(p)] = {"path": doc["path"], "owner": doc["owner"], "expires_in": math.ceil(doc["expires"] - now)}
     if held:
         return {"ok": False, "held": held}
     taken = []
@@ -67,7 +67,7 @@ def take(folder: Path, paths: list[str], owner: str, ttl: float, now: float | No
         except FileExistsError:  # someone took it between our check and now
             release(folder, taken, owner)
             other = _read(f) or {"owner": "?", "expires": now}
-            return {"ok": False, "held": {_key(p): {"owner": other["owner"], "expires_in": math.ceil(other["expires"] - now)}}}
+            return {"ok": False, "held": {_key(p): {"path": other["path"], "owner": other["owner"], "expires_in": math.ceil(other["expires"] - now)}}}
         with os.fdopen(fd, "w", encoding="utf-8") as out:
             json.dump(doc, out)
         taken.append(p)

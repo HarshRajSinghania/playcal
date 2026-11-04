@@ -35,6 +35,15 @@ var frames = PlaycalFrames.Begin("level4");          // skips the first 30 frame
 string path = frames.Save();                          // persistentDataPath/playcal/frames-level4.json
 ```
 
+For a screenshot gate, capture from a coroutine or a `[UnityTest]` and hand the file to `playcal visual`:
+
+```csharp
+yield return PlaycalShots.Capture("level4-start");   // persistentDataPath/playcal/shots/level4-start.png
+PlaycalShots.CaptureCamera("level4-end", cam);         // one camera right away, 640x360 by default
+```
+
+`Capture` grabs the whole screen at the end of the frame. In batch mode that moment never comes, so there it renders `Camera.main` instead (overlay UI isn't in that picture, and `-nographics` gives no picture at all). Feed the PNGs to `playcal visual`.
+
 Frame samples are only frame time, GC bytes and used memory, nothing about the player. In the Editor, GC numbers include the Editor's own allocations, so take baselines from a player build.
 
 Saying under 18 turns recording off and wipes the local log. Nothing leaves the device unless the player pastes the line themselves. See [PRIVACY.md](../../PRIVACY.md).

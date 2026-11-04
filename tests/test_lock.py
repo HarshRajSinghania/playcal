@@ -9,7 +9,7 @@ SCENE = "Assets/Scenes/Level4.unity"
 def test_second_owner_is_refused_and_told_who(tmp_path):
     assert lock.take(tmp_path, [SCENE], "a", 60, now=0)["ok"]
     r = lock.take(tmp_path, ["Assets\\Scenes\\level4.unity"], "b", 60, now=10)  # same file, other spelling
-    assert not r["ok"] and r["held"] == {"Assets/Scenes/level4.unity": {"owner": "a", "expires_in": 50}}
+    assert not r["ok"] and r["held"] == {"Assets/Scenes/level4.unity": {"path": "Assets/Scenes/Level4.unity", "owner": "a", "expires_in": 50}}
 
 
 def test_all_or_nothing(tmp_path):
