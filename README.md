@@ -6,7 +6,7 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 *AI agents: read [llms.txt](llms.txt) first.*
 
-> **Status: pre-alpha (v0.0.1).** Today the event schema, `playcal ingest`, `playcal report` and the Unity SDK work. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
+> **Status: pre-alpha (v0.0.1).** Today the event schema, `playcal ingest`, `playcal report`, `playcal logs`, the MCP server and the Unity SDK work. `playcal loop` works against a scripted fake of the Unity CLI and is being tried on a live Editor now. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
 <!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
 
@@ -46,14 +46,20 @@ Install playcal for this project:
 Do not change project files yet.
 ```
 
-The MCP server and the Claude Code skill are *planned*. When they ship, this section will look like this (not working yet):
+### MCP server and skill
+
+`playcal mcp` is a stdio MCP server. Every module becomes a tool (`playcal_ingest`, `playcal_logs`, `playcal_loop`, ...), built from the same argument definitions as the CLI, so the two can't drift apart.
 
 ```bash
 claude mcp add --transport stdio playcal -- playcal mcp
 code --add-mcp '{"name":"playcal","type":"stdio","command":"playcal","args":["mcp"]}'
 ```
 
-There will also be a Cursor install button.
+If your agent has a shell, a skill file is cheaper than MCP (no tool list in every prompt):
+
+```bash
+mkdir -p .claude/skills/playcal && playcal skill > .claude/skills/playcal/SKILL.md
+```
 
 ## Usage
 
@@ -83,6 +89,30 @@ playcal report accepted.jsonl --json
 
 Different `game_version`s stay separate, and levels sort naturally (1, 2, 10).
 
+### `playcal logs` (works today)
+
+Boils a Unity `Editor.log` (or Player.log, or pasted console text) down to what an agent needs. The same error a thousand times becomes one entry with `count: 1000`, and the first cause is pulled out on its own, since later errors are usually fallout.
+
+```bash
+playcal logs --json                         # this machine's Editor.log
+playcal logs Editor.log --since "Reloading assemblies"
+cat Player.log | playcal logs -
+```
+
+Exit code 1 means it found errors.
+
+### `playcal loop` (early)
+
+`loop settle` waits until the Editor is really ready: two "ready" polls in a row, because a domain reload can flicker. It tells Safe Mode, no Editor and two open Editors apart instead of timing out on all of them.
+
+`loop run` settles, runs one `unity command`, settles again, and can check its own work:
+
+```bash
+playcal loop run create_gameobject --verify "get_hierarchy" --expect "objects.*.name=Probe" --diff --json -- --name Probe
+```
+
+`--verify` runs a read command after the write, `--expect` asserts on its JSON (`path=value`, `path!=value`, `path~text`, or a bare `path` for "exists"; `*` matches any item), and `--diff` shows what changed between the read before and after. The digest says `fault: "infra"` when the Editor or CLI broke and `fault: "task"` when the command itself was wrong, so an agent knows whether to retry or rethink. A write that reported success but didn't land fails with `verify_failed` (exit 5).
+
 ### Unity SDK (works today)
 
 Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
@@ -94,11 +124,13 @@ Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.
 | `ingest` | event schema, validation, paste blobs | ✅ works |
 | `report` | per-level pass rate, attempts, Wilson CI | ✅ works |
 | Unity SDK | level events, PC0 "send result" line, delete-my-data, under-18 off | ✅ works |
-| `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | 🟡 `settle` and `run` work against fakes; not yet tried on a live Editor. verify/diff/assert next |
+| `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | 🟡 settle, run, verify, expect and diff work against a scripted fake; live Editor test in progress |
 | `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
 | `query` | one query language with field projection over scene, runtime state and logs | planned |
 | `checkpoint` | every agent step is a git-backed, revertible checkpoint | planned |
-| `observe` | console summary (dedupe, first cause), whole-scene runtime diff, screenshots only on red | planned |
+| `logs` | console/Editor.log summary: dedupe, first cause, error kinds | ✅ works |
+| `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
+| `observe` | whole-scene runtime diff, screenshots only on red | planned |
 | `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | planned |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
 | `tests` | flaky history and quarantine, affected tests | planned |

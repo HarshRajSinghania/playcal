@@ -1,17 +1,19 @@
 # playcal
 
-> Open-source toolkit for AI agents working on games (Unity first). Python CLI, every command supports --json. Pre-alpha: `playcal ingest`, `playcal report` and the Unity SDK work today.
+> Open-source toolkit for AI agents working on games (Unity first). Python CLI, every command supports --json. Pre-alpha: `playcal ingest`, `report`, `logs`, `mcp`, `skill` and the Unity SDK work today; `loop` is early.
 
 ## Install
 - `pipx install git+https://github.com/RizgarOzan/playcal` (Python 3.10+)
 - Check: `playcal modules --json` lists the installed modules.
-- MCP server: planned, not available yet. Do not try `playcal mcp`.
+- MCP server: `claude mcp add --transport stdio playcal -- playcal mcp`. Tools are named `playcal_<module>`.
+- Skill file instead of MCP: `playcal skill > .claude/skills/playcal/SKILL.md`.
 
 ## Commands that work
 - `playcal ingest FILE... [--paste] [--out accepted.jsonl] [--rejected rejected.jsonl] [--json]`: validates gameplay events against schema/event-v0.json. `--paste` pulls `PC0:` blobs out of free text such as a chat export. Exit 0 = ran, 2 = file error.
 - `playcal report FILE... [--json]`: per-level pass rate per player and per attempt with 95% Wilson CI, quit rate, median attempts to pass. Feed it ingest's accepted.jsonl.
 - `playcal loop settle [--project-path P] [--timeout S] [--json]`: waits until the Unity Editor reports ready on two polls in a row. Reasons: ready (exit 0), timeout / no_editor (3), safe_mode (4, compile errors: fix C# then restart Unity), ambiguous (2, pass --project-path).
-- `playcal loop run NAME [--project-path P] [--json] -- PARAMS...`: settle, `unity command NAME PARAMS`, settle again; one JSON digest. Early: not yet tested on a live Editor.
+- `playcal loop run NAME [--project-path P] [--verify "READCMD ARGS"] [--expect PATH=VALUE]... [--diff] [--json] -- PARAMS...`: settle, `unity command NAME PARAMS`, settle again, optionally re-read and assert. Digest has `ok`, `reason`, `fault` (infra = retry, task = fix your command), `checks`, `diff`. Exit 5 = verify_failed. Early: tested against a fake CLI only.
+- `playcal logs [PATH|-] [--since TEXT] [--limit N] [--json]`: summarizes a Unity log; `first_cause` is the error to fix first. Exit 1 = errors found.
 - Unity SDK: add `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk` in Package Manager. API in unity/com.playcal.sdk/README.md.
 
 ## Docs
