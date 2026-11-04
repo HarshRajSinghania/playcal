@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 
-from . import __version__
+from . import __version__, surfaces
 from .registry import load_modules
 
 
@@ -16,6 +16,11 @@ def build_parser() -> argparse.ArgumentParser:
     m = sub.add_parser("modules", help="list installed modules")
     m.add_argument("--json", action="store_true")
     m.set_defaults(func=_list_modules)
+
+    sub.add_parser("mcp", help="serve every module as an MCP tool over stdio").set_defaults(
+        func=lambda a: surfaces.serve())
+    sub.add_parser("skill", help="print a SKILL.md for coding agents, built from the installed modules").set_defaults(
+        func=lambda a: print(surfaces.skill_md()) or 0)
 
     for mod in load_modules():
         text = mod.summary.replace("%", "%%")  # argparse treats % as a format code
