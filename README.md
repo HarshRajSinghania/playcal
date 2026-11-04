@@ -169,7 +169,7 @@ playcal baseline check level4 run-branch.json                 # exit 1 only when
 playcal baseline check level4 run.json --percentile 99 --tolerance 5 --floor frame_ms=0.5
 ```
 
-It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. The Unity SDK's `PlaycalFrames.Begin("level4")` records the samples, and `Save()` writes them where `baseline` can read them. Its `used_memory_bytes` series goes through the same check, so a run that needs more memory fails the same way; add `--floor used_memory_bytes=1048576` to ignore growth under 1 MB. A visual gate isn't built yet.
+It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. The Unity SDK's `PlaycalFrames.Begin("level4")` records the samples, and `Save()` writes them where `baseline` can read them. Its `used_memory_bytes` series goes through the same check, so a run that needs more memory fails the same way; add `--floor used_memory_bytes=1048576` to ignore growth under 1 MB. The visual gate is `playcal visual`, below.
 
 ### `playcal tests` (works today)
 
@@ -190,6 +190,18 @@ playcal tests affected                     # uncommitted work; --base main for a
 ```
 
 It reads the project's `.asmdef` and `.asmref` files (names and `GUID:` references), puts each changed script in the assembly of the nearest asmdef above it, and follows references outward to the test assemblies. Scripts with no asmdef go to `Assembly-CSharp` or `Assembly-CSharp-Editor`. A scene, prefab, setting or `Packages/manifest.json` change can't be traced through code, so it says so and asks for a full run. Packages referenced with `file:` from outside the project aren't scanned.
+
+### `playcal visual` (works today on PNG files)
+
+A screenshot gate. Save a shot as the baseline, then check later shots against it:
+
+```bash
+playcal visual save level4-start shot.png
+playcal visual check level4-start shot.png     # exit 1 if more than 0.1% of pixels changed
+# changed: 4096 pixels (0.1975%) differ, box [900, 300, 963, 363], see .playcal/visual/level4-start.diff.png
+```
+
+A pixel counts as changed when one of its channels moves by more than `--tolerance` (default 8 out of 255), so antialiasing and compression noise pass while a missing sprite doesn't. `--max-changed` sets how many percent of pixels may change. On a fail it writes a diff PNG with the changed pixels in red over a pale copy of the new shot, and the box tells an agent where to look. It reads 8-bit PNGs (grey, RGB, RGBA, no interlace) with the standard library only; a 1920x1080 shot takes about 2 s. Take shots at a fixed resolution, with animations paused, or the gate measures the animation.
 
 ### `playcal lock` (works today)
 
@@ -235,10 +247,11 @@ For perf runs, `PlaycalFrames.Begin("level4")` records frame time, GC bytes allo
 | `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
 | `snap` | save a read, diff two saves with session ids left out | ✅ works, checked across an Editor restart |
 | `observe` | whole-scene runtime diff, screenshots only on red | planned (`snap` covers the diff part) |
-| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf and memory gates and the SDK recorder work; visual gate planned |
+| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | ✅ perf and memory gates, the SDK recorder, and the visual gate as `playcal visual` |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
 | `tests` | flaky history and quarantine, affected tests | ✅ history, flaky detection, quarantine (NUnit3, JUnit) and affected test assemblies from the .asmdef graph |
 | `lock` | scene/asset locks for several agents at once | ✅ works (advisory lock files with expiry) |
+| `doctor` | check the setup before a run | ✅ works |
 | Godot, Unreal | same core, new backend | later |
 
 Every row is one module. A module is a Python entry point in the `playcal.modules` group, with optional Editor C#, its own tests and its own benchmark scenario. New features arrive as new modules, not as new tools to install.

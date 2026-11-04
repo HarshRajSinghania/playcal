@@ -30,6 +30,7 @@ baseline = "playcal.baseline:MODULE"
 tests = "playcal.testhist:MODULE"
 lock = "playcal.lock:MODULE"
 doctor = "playcal.doctor:MODULE"
+visual = "playcal.visual:MODULE"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/playcal"]
