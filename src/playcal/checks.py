@@ -1,7 +1,8 @@
 """Engine-independent checks on JSON results: dotted-path lookups, expectations and a small diff.
 
 Paths are dotted: `scene.objects.0.name`. A `*` segment fans out over every list item or dict value,
-so `objects.*.name=PlaycalProbe` passes when any object has that name.
+so `objects.*.name=PlaycalProbe` passes when any object has that name. `**` is the node and
+everything under it at any depth, for nested hierarchies: `**.name=Probe`.
 """
 from __future__ import annotations
 
@@ -13,7 +14,9 @@ def lookup(data, path: str) -> list:
     for seg in [s for s in path.split(".") if s] if path else []:
         nxt = []
         for node in found:
-            if seg == "*":
+            if seg == "**":
+                nxt.extend(_descend(node))
+            elif seg == "*":
                 nxt.extend(node.values() if isinstance(node, dict) else node if isinstance(node, list) else [])
             elif isinstance(node, dict) and seg in node:
                 nxt.append(node[seg])
@@ -21,6 +24,14 @@ def lookup(data, path: str) -> list:
                 nxt.append(node[int(seg)])
         found = nxt
     return found
+
+
+def _descend(node) -> list:
+    """`node` and everything under it, depth first."""
+    out = [node]
+    for child in node.values() if isinstance(node, dict) else node if isinstance(node, list) else []:
+        out.extend(_descend(child))
+    return out
 
 
 def _value(text: str):
@@ -57,7 +68,7 @@ def check(data, spec: str) -> dict:
         ok = all(v != e["expected"] for v in values)
     else:
         ok = any(_hit(e["op"], v, e["expected"]) for v in values)
-    fan_out = "*" in e["path"].split(".")
+    fan_out = bool({"*", "**"} & set(e["path"].split(".")))
     actual = values if fan_out else values[0] if values else None
     return {"expect": spec, "ok": ok, "actual": _clip(actual)}
 

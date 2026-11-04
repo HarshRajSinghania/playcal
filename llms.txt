@@ -14,6 +14,7 @@
 - `playcal loop settle [--project-path P] [--timeout S] [--json]`: waits until the Unity Editor reports ready on two polls in a row. Reasons: ready (exit 0), timeout / no_editor (3), safe_mode (4, compile errors: fix C# then restart Unity), ambiguous (2, pass --project-path).
 - `playcal loop run NAME [--project-path P] [--verify "READCMD ARGS"] [--expect PATH=VALUE]... [--diff] [--json] -- PARAMS...`: settle, `unity command NAME PARAMS`, settle again, optionally re-read and assert. Digest has `ok`, `reason`, `fault` (infra = retry, task = fix your command), `checks`, `diff`. Exit 5 = verify_failed. Early: tested against a fake CLI only.
 - `playcal checkpoint save [MSG] | list | diff ID | restore ID [--repo P] [--json]`: file snapshots on refs/playcal/checkpoints; never moves HEAD or the index. IDs: short sha, latest, ~N. restore saves the current state first and returns `undo`. `loop run --checkpoint` saves before the write.
+- `playcal query [FILE|-] [--unity "CMD ARGS"] [--from PATH] [--where EXPR]... [--select PATH]... [--limit N] [--json]`: returns `count`, `items`, `bytes_in`, `bytes_out`. Paths: dotted, `*` any item, `**` any depth. Use it instead of reading a full dump.
 - `playcal logs [PATH|-] [--since TEXT] [--limit N] [--json]`: summarizes a Unity log; `first_cause` is the error to fix first. Exit 1 = errors found.
 - Unity SDK: add `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk` in Package Manager. API in unity/com.playcal.sdk/README.md.
 

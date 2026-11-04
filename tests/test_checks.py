@@ -36,3 +36,9 @@ def test_diff_nested_change_and_truncation():
     assert checks.diff(SCENE, after) == [{"path": "objects[name=Main Camera].active", "before": True, "after": False}]
     big = checks.diff({str(i): i for i in range(80)}, {}, limit=10)
     assert len(big) == 11 and big[-1] == {"truncated": 70}
+
+
+def test_double_star_any_depth():
+    from playcal.checks import check
+    tree = {"a": [{"name": "x", "children": [{"name": "Probe"}]}]}
+    assert check(tree, "**.name=Probe")["ok"] and not check(tree, "a.*.name=Probe")["ok"]

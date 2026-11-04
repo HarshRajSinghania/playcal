@@ -113,6 +113,17 @@ playcal loop run create_gameobject --verify "get_hierarchy" --expect "objects.*.
 
 `--verify` runs a read command after the write, `--expect` asserts on its JSON (`path=value`, `path!=value`, `path~text`, or a bare `path` for "exists"; `*` matches any item), and `--diff` shows what changed between the read before and after. The digest says `fault: "infra"` when the Editor or CLI broke and `fault: "task"` when the command itself was wrong, so an agent knows whether to retry or rethink. A write that reported success but didn't land fails with `verify_failed` (exit 5).
 
+### `playcal query` (works today on JSON)
+
+A full hierarchy dump can be tens of thousands of tokens when the agent needs three names. `query` keeps only what you ask for and says how much it cut:
+
+```bash
+playcal query --unity "get_hierarchy" --from "**" --where "name~Enemy" --select name --select active --json
+playcal query scene.json --from data.objects --where "tag=Enemy" --select name
+```
+
+`--where` uses the same syntax as `loop --expect`. `*` is any item of a list, `**` is anything at any depth.
+
 ### `playcal checkpoint` (works today)
 
 Saves the project's files before an agent step and brings any save back. Saves are git commits on a private ref (`refs/playcal/checkpoints`), so your branch, HEAD and staging area don't move and nothing is pushed. `.gitignore` is respected.
@@ -139,7 +150,7 @@ Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.
 | Unity SDK | level events, PC0 "send result" line, delete-my-data, under-18 off | ✅ works |
 | `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | 🟡 settle, run, verify, expect and diff work against a scripted fake; live Editor test in progress |
 | `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
-| `query` | one query language with field projection over scene, runtime state and logs | planned |
+| `query` | pick, filter and project fields from any JSON result (file, stdin or a Unity read command) | 🟡 works on JSON; Unity shapes not checked live |
 | `checkpoint` | every agent step is a git-backed, revertible checkpoint | ✅ works (`loop run --checkpoint` saves before each write) |
 | `logs` | console/Editor.log summary: dedupe, first cause, error kinds | ✅ works |
 | `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
