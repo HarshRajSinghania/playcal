@@ -101,7 +101,7 @@ cat Player.log | playcal logs -
 
 Exit code 1 means it found errors.
 
-### `playcal loop` (early)
+### `playcal loop` (works on a live Editor)
 
 `loop settle` waits until the Editor is really ready: two "ready" polls in a row, because a domain reload can flicker. While Unity compiles or reloads, `unity status` shows no Editor at all, so settle asks `unity pipeline list` why: Safe Mode, Unity running but stuck on a dialog (`editor_blocked`), or really no Editor. Two open Editors are reported too, instead of timing out on all of them.
 
@@ -157,6 +157,18 @@ playcal snap diff run-a run-b --json
 
 Unity's instanceIds only hold within one Editor session, so a plain diff across a restart or into play mode says everything was removed and re-added. snap leaves `instanceId` out and matches objects by `hierarchyPath`, then `path`, `guid`, `name`; two siblings with the same name become `Enemy` and `Enemy#2`. Any JSON file works, not only Unity reads. Saves go to `.playcal/snaps/`.
 
+### `playcal baseline` (works today on JSON)
+
+Keeps a perf run as the baseline and fails a later run only when it is slower by more than noise. Feed it per-frame samples, `{"frame_ms": [...], "gc_alloc_bytes": [...]}` or a bare list of frame times:
+
+```bash
+playcal baseline save level4 run-main.json
+playcal baseline check level4 run-branch.json                 # exit 1 only when slower
+playcal baseline check level4 run.json --percentile 99 --tolerance 5 --floor frame_ms=0.5
+```
+
+It compares p95 by default and bootstraps the difference. The check fails only when even the low end of the 95% interval is past the tolerance (10% by default). A short run with a couple of hitches comes out `inconclusive`, so one noisy CI machine doesn't turn the build red. `--floor` ignores slowdowns that are too small to matter in absolute units. Baselines live in `.playcal/baselines/`. Visual and memory gates aren't built yet, and nothing in the Unity SDK records frame samples yet either; for now you bring the JSON.
+
 ### Unity SDK (works today)
 
 Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
@@ -168,14 +180,15 @@ Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.
 | `ingest` | event schema, validation, paste blobs | ✅ works |
 | `report` | per-level pass rate, attempts, Wilson CI | ✅ works |
 | Unity SDK | level events, PC0 "send result" line, delete-my-data, under-18 off | ✅ works |
-| `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | 🟡 settle, run, verify, expect and diff work against a scripted fake; live Editor test in progress |
+| `loop` | edit → settle (compile/reload, focus, modal) → verify write → diff → assert, one JSON digest | ✅ read, write and `--expect` checked on a live Unity 6000.3 Editor; Safe Mode branch not seen live |
 | `calibrate` / `predict` | bot metrics + small human panel → predicted human pass rate with CI | planned |
 | `query` | pick, filter and project fields from any JSON result (file, stdin or a Unity read command) | 🟡 works on JSON; Unity shapes not checked live |
 | `checkpoint` | every agent step is a git-backed, revertible checkpoint | ✅ works (`loop run --checkpoint` saves before each write) |
 | `logs` | console/Editor.log summary: dedupe, first cause, error kinds | ✅ works |
 | `mcp`, `skill` | MCP server and SKILL.md generated from the module registry | ✅ works |
-| `observe` | whole-scene runtime diff, screenshots only on red | planned |
-| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | planned |
+| `snap` | save a read, diff two saves with session ids left out | ✅ works on JSON |
+| `observe` | whole-scene runtime diff, screenshots only on red | planned (`snap` covers the diff part) |
+| `baseline` | visual, perf (p95 frame time, GC) and memory gates per commit | 🟡 perf gate works on JSON; visual, memory and an SDK recorder planned |
 | `replay` | frame stepping, recorded input, replay → regression test | planned |
 | `tests` | flaky history and quarantine, affected tests | planned |
 | `lock` | scene/asset locks for several agents at once | planned |

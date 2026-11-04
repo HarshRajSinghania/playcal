@@ -26,6 +26,7 @@ logs = "playcal.logs:MODULE"
 checkpoint = "playcal.checkpoint:MODULE"
 query = "playcal.query:MODULE"
 snap = "playcal.snap:MODULE"
+baseline = "playcal.baseline:MODULE"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/playcal"]
