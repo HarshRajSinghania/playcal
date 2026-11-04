@@ -95,9 +95,11 @@ def write_png(path: Path, w: int, h: int, rows: list[bytes]) -> None:
                           + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
 
-def diff(a: tuple[int, int, list[bytes]], b: tuple[int, int, list[bytes]], tolerance: int = 8):
-    """Pixels whose largest channel difference is above `tolerance` (0-255). Returns a summary and
-    the diff image rows (changed pixels red, the rest the new shot dimmed)."""
+def diff(a: tuple[int, int, list[bytes]], b: tuple[int, int, list[bytes]], tolerance: int = 8,
+         ignore: list[tuple[int, int, int, int]] = ()):
+    """Pixels whose largest channel difference is above `tolerance` (0-255), skipping the `ignore`
+    boxes (x0, y0, x1, y1, inclusive). Returns a summary and the diff image rows (changed pixels red,
+    the rest the new shot dimmed)."""
     (wa, ha, ra), (wb, hb, rb) = a, b
     if (wa, ha) != (wb, hb):
         return {"same_size": False, "size": [wa, ha], "new_size": [wb, hb]}, None
@@ -108,7 +110,10 @@ def diff(a: tuple[int, int, list[bytes]], b: tuple[int, int, list[bytes]], toler
             out.append(y_row.translate(DIM))
             continue
         row = bytearray(y_row.translate(DIM))
+        skip = [(x0, x1) for x0, y0, x1, y1 in ignore if y0 <= y <= y1]
         for x in range(wa):
+            if skip and any(x0 <= x <= x1 for x0, x1 in skip):
+                continue
             i = x * 4
             d = max(abs(x_row[i] - y_row[i]), abs(x_row[i + 1] - y_row[i + 1]),
                     abs(x_row[i + 2] - y_row[i + 2]), abs(x_row[i + 3] - y_row[i + 3]))
@@ -129,6 +134,8 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--dir", default=".playcal/visual", help="where baselines live (default .playcal/visual)")
     p.add_argument("--tolerance", type=int, default=8, help="per-channel difference a pixel may have, 0-255 (default 8)")
     p.add_argument("--max-changed", type=float, default=0.1, help="percent of pixels allowed to change (default 0.1)")
+    p.add_argument("--ignore", action="append", default=[], metavar="X0,Y0,X1,Y1",
+                   help="skip a box that changes on its own, like a clock or FPS counter (repeatable)")
     p.add_argument("--json", action="store_true", help="print the result as JSON")
 
 
@@ -144,14 +151,17 @@ def _run(args: argparse.Namespace) -> int:
         elif not base.exists():
             out, code = {"error": f"no baseline {args.name} in {folder}; run save first"}, 2
         else:
-            out, rows = diff(read_png(base), new, args.tolerance)
+            ignore = [tuple(int(v) for v in box.split(",")) for box in args.ignore]
+            if any(len(box) != 4 for box in ignore):
+                raise PngError("--ignore takes X0,Y0,X1,Y1")
+            out, rows = diff(read_png(base), new, args.tolerance, ignore)
             ok = out["same_size"] and out["changed_percent"] <= args.max_changed
             out["verdict"] = "ok" if ok else "changed"
             if not ok and rows is not None:
                 out["diff_png"] = str(folder / f"{args.name}.diff.png")
                 write_png(Path(out["diff_png"]), *new[:2], rows)
             code = 0 if ok else 1
-    except (OSError, PngError, zlib.error) as e:
+    except (OSError, PngError, zlib.error, ValueError) as e:
         out, code = {"error": str(e)}, 2
     if args.json:
         print(json.dumps(out, ensure_ascii=False))

@@ -50,6 +50,7 @@ def test_diff_counts_only_pixels_over_tolerance():
     assert (out["changed_pixels"], out["box"]) == (1, [3, 1, 3, 1])
     assert rows[1][12:16] == b"\xff\x00\x00\xff"
     assert diff(base, (2, 2, base[2]))[0]["same_size"] is False
+    assert diff(base, new, tolerance=8, ignore=[(3, 0, 3, 1)])[0]["changed_pixels"] == 0
 
 
 def test_cli_save_then_check(tmp_path):
@@ -66,3 +67,5 @@ def test_cli_save_then_check(tmp_path):
     r = run("check", "lvl", str(tmp_path / "shot2.png"))
     out = json.loads(r.stdout)
     assert r.returncode == 1 and out["changed_pixels"] == 5 and (tmp_path / "b" / "lvl.diff.png").exists()
+    assert run("check", "lvl", str(tmp_path / "shot2.png"), "--ignore", "5,5,9,5").returncode == 0
+    assert run("check", "lvl", str(tmp_path / "shot2.png"), "--ignore", "5,5").returncode == 2
