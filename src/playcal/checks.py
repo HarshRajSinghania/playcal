@@ -78,14 +78,17 @@ def _clip(value, limit: int = 200):
     return value if len(text) <= limit else text[:limit] + "..."
 
 
-def diff(before, after, limit: int = 50) -> list[dict]:
+def diff(before, after, limit: int = 50, ignore=(), id_keys=None) -> list[dict]:
     """Paths that were added, removed or changed between two JSON values. At most `limit` entries;
-    a final {"truncated": n} entry says how many more there were."""
+    a final {"truncated": n} entry says how many more there were. `ignore`: dict keys to skip
+    everywhere (ids that change between sessions). `id_keys`: which field names a list item,
+    first match wins (default: instanceId, id, guid, path, name)."""
     out: list[dict] = []
+    ignore, id_keys = set(ignore), tuple(id_keys or _ID_KEYS)
 
     def walk(a, b, path):
         if isinstance(a, dict) and isinstance(b, dict):
-            for k in sorted(set(a) | set(b), key=str):
+            for k in sorted((set(a) | set(b)) - ignore, key=str):
                 p = f"{path}.{k}" if path else str(k)
                 if k not in a:
                     out.append({"path": p, "added": _clip(b[k])})
@@ -93,7 +96,7 @@ def diff(before, after, limit: int = 50) -> list[dict]:
                     out.append({"path": p, "removed": _clip(a[k])})
                 else:
                     walk(a[k], b[k], p)
-        elif isinstance(a, list) and isinstance(b, list) and not _named(a) and not _named(b):
+        elif isinstance(a, list) and isinstance(b, list) and not (_named(a, id_keys) and _named(b, id_keys)):
             for i in range(max(len(a), len(b))):
                 p = f"{path}.{i}" if path else str(i)
                 if i >= len(a):
@@ -104,7 +107,7 @@ def diff(before, after, limit: int = 50) -> list[dict]:
                     walk(a[i], b[i], p)
         elif isinstance(a, list) and isinstance(b, list):
             # Lists of named things (scene objects, assets): match by name so one insert isn't N changes.
-            ka, kb = {_key(x): x for x in a}, {_key(x): x for x in b}
+            ka, kb = dict(zip(_keys(a, id_keys), a)), dict(zip(_keys(b, id_keys), b))
             for k in sorted(set(ka) | set(kb), key=str):
                 p = f"{path}[{k}]"
                 if k not in ka:
@@ -125,16 +128,27 @@ def diff(before, after, limit: int = 50) -> list[dict]:
 _ID_KEYS = ("instanceId", "instanceID", "id", "guid", "path", "name")
 
 
-def _key(x):
-    for k in _ID_KEYS:
+def _key(x, id_keys=_ID_KEYS):
+    for k in id_keys:
         if isinstance(x, dict) and k in x:
             return f"{k}={x[k]}"
     return json.dumps(x, sort_keys=True, ensure_ascii=False)
 
 
-def _named(items: list) -> bool:
-    """True when every item is a dict with the same id-like key and those keys are unique."""
+def _keys(items: list, id_keys=_ID_KEYS) -> list[str]:
+    """One key per item; repeats (two siblings both called Enemy) become name=Enemy#2, #3..."""
+    seen: dict[str, int] = {}
+    out = []
+    for x in items:
+        k = _key(x, id_keys)
+        seen[k] = seen.get(k, 0) + 1
+        out.append(k if seen[k] == 1 else f"{k}#{seen[k]}")
+    return out
+
+
+def _named(items: list, id_keys=_ID_KEYS) -> bool:
+    """True when every item is a dict named by the same id-like field."""
     if not items or not all(isinstance(x, dict) for x in items):
         return False
-    keys = [_key(x) for x in items]
-    return len(set(keys)) == len(keys) and not keys[0].startswith("{")
+    fields = {_key(x, id_keys).partition("=")[0] for x in items}
+    return len(fields) == 1 and not next(iter(fields)).startswith("{")

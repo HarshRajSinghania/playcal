@@ -144,6 +144,19 @@ playcal checkpoint restore ~1     # one save back; prints how to undo the restor
 
 Restore only rewrites files that differ, so Unity doesn't reimport everything. With `loop run --checkpoint`, every write is preceded by a save and a failed digest carries an `undo` command. Unity only writes scenes and prefabs to disk when they're saved, so unsaved Editor changes aren't in a checkpoint.
 
+### `playcal snap` (works today on JSON)
+
+Saves a read under a name and later tells you what changed, so "what did this run do to the scene" is a few lines instead of two dumps:
+
+```bash
+playcal snap save before --unity "scene get_hierarchy"
+# ... the agent works, or you play a round ...
+playcal snap diff before --unity "scene get_hierarchy"     # exit 1 when something changed
+playcal snap diff run-a run-b --json
+```
+
+Unity's instanceIds only hold within one Editor session, so a plain diff across a restart or into play mode says everything was removed and re-added. snap leaves `instanceId` out and matches objects by `hierarchyPath`, then `path`, `guid`, `name`; two siblings with the same name become `Enemy` and `Enemy#2`. Any JSON file works, not only Unity reads. Saves go to `.playcal/snaps/`.
+
 ### Unity SDK (works today)
 
 Install from git URL `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk`, then call `PlaycalLog.Init()`, `log.LevelStart("04")`, `log.LevelFail(...)`. The "send result" button calls `PlaycalLog.CopyResult()`. Usage is in the [package README](unity/com.playcal.sdk/README.md). A test checks that the C# output passes the same schema as the Python side.
