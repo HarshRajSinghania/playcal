@@ -1,0 +1,32 @@
+name: Editor failure
+description: An agent got the wrong idea about the editor's state (a lost write, a false "done", a hang)
+labels: ["editor-failure"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What the agent did
+      description: The command or tool call, as close to verbatim as you can.
+    validations:
+      required: true
+  - type: textarea
+    id: said
+    attributes:
+      label: What the editor or CLI said
+      description: The JSON envelope or console text. Trim it, but keep the error codes.
+    validations:
+      required: true
+  - type: textarea
+    id: truth
+    attributes:
+      label: What was actually true
+      description: e.g. the object was never created, Unity was still reloading, a dialog was open.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: Unity 6000.3.9f1, Pipeline 0.10.0-exp.1, playcal 0.1.0, Windows 11
+    validations:
+      required: true

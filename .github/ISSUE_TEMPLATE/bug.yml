@@ -1,0 +1,22 @@
+name: Bug
+description: playcal did something wrong
+labels: ["bug"]
+body:
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The command you ran, with --json output if you can.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: playcal 0.1.0, Python 3.12, OS, Unity version if it matters

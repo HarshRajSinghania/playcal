@@ -1,0 +1,16 @@
+name: Module idea
+description: A new playcal module, or a new engine backend
+labels: ["module-idea"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem it solves
+      description: What goes wrong today when an agent builds or tests a game without it?
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: Rough shape
+      description: Command line, inputs, outputs, what it would need from the editor.
