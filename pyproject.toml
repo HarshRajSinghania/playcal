@@ -22,6 +22,7 @@ playcal = "playcal.cli:main"
 ingest = "playcal.ingest:MODULE"
 report = "playcal.report:MODULE"
 loop = "playcal.loop:MODULE"
+logs = "playcal.logs:MODULE"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/playcal"]

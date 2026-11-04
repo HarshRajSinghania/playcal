@@ -1,0 +1,22 @@
+[Licensing::Module] Successfully connected to LicensingClient
+Reloading assemblies after forced synchronous recompile.
+Assets/Scripts/Old.cs(3,1): error CS0246: The type or namespace name 'Gone' could not be found
+Begin MonoManager ReloadAssembly
+- Starting compile Library/ScriptAssemblies/Assembly-CSharp.dll
+Assets/Scripts/Board.cs(41,17): error CS0103: The name 'tiles' does not exist in the current context
+Assets/Scripts/Board.cs(41,17): error CS0103: The name 'tiles' does not exist in the current context
+Assets\Scripts\Hud.cs(12,9): error CS1061: 'Text' does not contain a definition for 'txt'
+Assets/Scripts/Hud.cs(30,5): warning CS0414: The field 'Hud.unused' is assigned but its value is never used
+NullReferenceException: Object reference not set to an instance of an object
+UnityEngine.Transform.get_position () (at /Users/bokken/build/output/unity/Runtime/Transform.bindings.cs:20)
+Player.Update () (at Assets/Scripts/Player.cs:21)
+
+NullReferenceException: Object reference not set to an instance of an object
+UnityEngine.Transform.get_position () (at /Users/bokken/build/output/unity/Runtime/Transform.bindings.cs:20)
+Player.Update () (at Assets/Scripts/Player.cs:21)
+
+Level 4 has no goal set
+UnityEngine.Debug:LogError (object)
+LevelLoader:Load (int) (at Assets/Scripts/LevelLoader.cs:55)
+
+Refreshing native plugins compatible for Editor in 1.23 ms, found 3 plugins.
