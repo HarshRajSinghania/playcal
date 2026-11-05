@@ -1,12 +1,18 @@
 """playcal observe: press Play, let the game run a few seconds, and report one digest of what changed
 in the scene and what went wrong. A screenshot is taken only when something went red.
 
-  1. settle, read the scene (default `scene get_hierarchy`), mark the console cursor
-  2. enter Play Mode and settle again (entering Play reloads the domain: ~30 s on a small project)
-  3. wait --seconds, read the scene again, pull the console errors logged since the mark
+  1. settle, then one batch: read the scene (default `scene get_hierarchy`), mark the console
+     cursor, ask whether Play Mode is already on
+  2. enter Play Mode and wait for `editor status` to say it's playing
+  3. let the game run --seconds, then one batch: read the scene again, pull the console errors
+     logged since the mark
   4. --expect checks run on the second read
   5. red (errors, a failed check, a failed read) -> `capture game_view` into --shots
   6. leave Play Mode, diff the two reads with snap's rules (instanceIds left out)
+
+Every `unity` call costs about 3 s, so the reads go through `job batch`, several to one call; a read
+the batch won't take runs on its own. `played_ms` says how long the game ran before the second
+read: at least `min`, at most `max`.
 
 The scene diff is reported, not gated on: a running game is supposed to change. Gate on it with
 --expect. If the Editor is already in Play Mode, observe watches it for --seconds and leaves it running.
@@ -26,17 +32,52 @@ EXIT = {"clean": 0, "errors": 1, "expect_failed": 1, "read_failed": 1, "play_fai
 NOT_PLAYING = {"code": "NOT_PLAYING", "message": "the Editor didn't enter Play Mode (compile errors block it)"}
 
 
-def _console_mark(runner, project) -> dict | None:
-    res = loop._call(runner, ["console", "status"], project)
+def _op(argv: Sequence[str]) -> dict | None:
+    """`scene get_hierarchy --path X` as a batch op: {"command": "scene get_hierarchy", "params": {"path": "X"}}.
+    None when the words don't fit that shape (a stray positional argument)."""
+    words = list(argv)
+    i = next((k for k, w in enumerate(words) if w.startswith("--")), len(words))
+    params, rest = {}, words[i:]
+    while rest:
+        flag = rest.pop(0)
+        if not flag.startswith("--"):
+            return None
+        key, eq, val = flag[2:].partition("=")
+        params[key] = val if eq else rest.pop(0) if rest and not rest[0].startswith("--") else True
+    return {"command": " ".join(words[:i]), "params": params} if i else None
+
+
+def _reads(runner, project, reads: Sequence[Sequence[str]]) -> list[dict]:
+    """Several Editor reads in one `job batch` call; each result looks like loop._call's. A read that
+    fails inside the batch (not batchable, or an older Pipeline without `job batch`) runs again on
+    its own, so its error is the one the plain command gives."""
+    ops = [_op(r) for r in reads]
+    out: list = [None] * len(reads)
+    if sum(o is not None for o in ops) > 1:
+        res = loop._call(runner, ["job", "batch", "--operations", json.dumps([o for o in ops if o]),
+                                  "--on-error", "continue"], project)
+        items = iter((((res["data"] or {}).get("result") or {}).get("results") or []) if res["success"] else [])
+        for k, o in enumerate(ops):
+            item = next(items, None) if o else None
+            if o and item and item.get("success"):
+                out[k] = {"success": True, "exit_code": 0, "errors": [], "warnings": [],
+                          "data": {"command": o["command"], "parameters": o["params"], "result": item.get("result")}}
+    return [r or loop._call(runner, list(argv), project) for r, argv in zip(out, reads)]
+
+
+def _mark(res: dict) -> dict | None:
     r = ((res["data"] or {}).get("result") or {}) if res["success"] else {}
     return {"cursor": r["cursor"], "session": r.get("session")} if "cursor" in r else None
 
 
-def _console_since(runner, project, mark: dict, limit: int) -> dict:
-    argv = ["console", "get", "--level", "error", "--since", str(mark["cursor"])]
-    if mark.get("session"):
-        argv += ["--since-session", mark["session"]]
-    res = loop._call(runner, argv, project)
+def _since(mark: dict) -> list[str]:
+    return ["console", "get", "--level", "error", "--since", str(mark["cursor"]),
+            *(["--since-session", mark["session"]] if mark.get("session") else [])]
+
+
+def _console(res: dict | None, limit: int) -> dict:
+    if res is None:
+        return {"read": False, "errors_seen": None}
     if not res["success"]:
         return {"read": False, "errors_seen": None, "problem": res["errors"]}
     r = (res["data"] or {}).get("result") or {}
@@ -59,11 +100,25 @@ def _console_verdict(con: dict) -> str | None:
     return None
 
 
-def _playing(runner, project) -> bool:
-    """In Play Mode, running or paused."""
-    res = loop._call(runner, ["editor", "status"], project)
-    mode = ((res["data"] or {}).get("result") or {}).get("playMode") if res["success"] else None
-    return mode in ("playing", "paused")
+def _playing(res: dict) -> bool:
+    """An `editor status` result says Play Mode, running or paused."""
+    return res["success"] and ((res["data"] or {}).get("result") or {}).get("playMode") in ("playing", "paused")
+
+
+def _enter_play(runner, project, timeout, sleep, clock) -> dict:
+    """Wait for Play Mode after `editor.playmode start`. Asks `editor status`, not `unity status`:
+    start comes back once the reload is done and `editor status` says "playing" right away, while
+    `unity status` can list no Editor for a few seconds more. An Editor that answers and sits idle in
+    Edit Mode isn't going to enter it (compile errors block Play), so that ends the wait."""
+    start = clock()
+    while True:
+        res = loop._call(runner, ["editor", "status"], project)
+        r = ((res["data"] or {}).get("result") or {}) if res["success"] else {}
+        busy = not res["success"] or bool(r.get("compiling") or r.get("domainReloadInProgress"))
+        if _playing(res) or not busy or clock() - start >= timeout:
+            return {"playing": _playing(res), "busy": busy and not _playing(res),
+                    "waited_ms": round((clock() - start) * 1000)}
+        sleep(0.5)
 
 
 def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", "get_hierarchy"), seconds: float = 3,
@@ -84,34 +139,38 @@ def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", 
 
     if not d["before"]["settled"]:
         return done(d["before"]["reason"])
-    first = loop._call(runner, list(read), project)
+    t_ask = clock()
+    first, con_mark, status = _reads(runner, project, [list(read), ["console", "status"], ["editor", "status"]])
+    t_watch = clock()
     if not first["success"]:
         d["read_errors"] = first["errors"]
         return done("read_failed", first)
-    mark = _console_mark(runner, project)
-
-    def console() -> dict:
-        return _console_since(runner, project, mark, 20) if mark else {"read": False, "errors_seen": None}
+    mark = _mark(con_mark)
+    since = [_since(mark)] if mark else []
 
     started = False
     try:  # whatever happens after Play starts, leave Play Mode again
-        if play and not _playing(runner, project):
+        if play and not _playing(status):
+            t_ask = clock()
             res = loop._call(runner, ["editor.playmode", "start"], project)
             if not res["success"]:
                 d["play_errors"] = res["errors"]
                 return done("play_failed", res)
             started = True
-            d["entered_play"] = loop.settle(runner, project, timeout, await_gone=10, sleep=sleep, clock=clock)
-            if not d["entered_play"]["settled"]:
-                d["console"] = console()
-                return done(d["entered_play"]["reason"])
-            if not _playing(runner, project):
-                d["console"], d["play_errors"] = console(), [NOT_PLAYING]
+            d["entered_play"] = _enter_play(runner, project, timeout, sleep, clock)
+            t_watch = clock()
+            if not d["entered_play"]["playing"]:
+                d["console"] = _console(_reads(runner, project, since)[0] if mark else None, 20)
+                if d["entered_play"]["busy"]:
+                    return done("timeout")
+                d["play_errors"] = [NOT_PLAYING]
                 return done("play_failed")
-        sleep(seconds)
+        sleep(max(0.0, seconds - (clock() - t_watch)))
 
-        second = loop._call(runner, list(read), project)
-        d["console"] = console()
+        t_read = clock()
+        second, *con = _reads(runner, project, [list(read), *since])
+        d["played_ms"] = {"min": round((t_read - t_watch) * 1000), "max": round((clock() - t_ask) * 1000)}
+        d["console"] = _console(con[0] if con else None, 20)
         d["checks"] = [checks.check(second["data"], e) for e in expect] if second["success"] else []
         heard = _console_verdict(d["console"])
         reason = ("read_failed" if not second["success"] else "errors" if heard == "errors"
@@ -123,9 +182,10 @@ def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", 
             res = (cap["data"] or {}).get("result") or {}
             d["shot"] = res.get("savedPath") if cap["success"] else {"failed": cap["errors"]}
     finally:
-        if started:
-            res = loop._call(runner, ["editor.playmode", "stop"], project)
-            d["left_play"] = res["success"] and loop.settle(runner, project, timeout, sleep=sleep, clock=clock)["settled"]
+        if started:  # stop comes back once Edit Mode is back; the next command settles first anyway
+            d["left_play"] = loop._call(runner, ["editor.playmode", "stop"], project)["success"]
+            if "elapsed_ms" in d:  # an early return inside the try: count the stop too
+                d["elapsed_ms"] = round((clock() - t0) * 1000)
     if second["success"]:
         d["diff"] = snap.compare(first["data"], second["data"], ignore, limit)
     return done(reason, second)
@@ -172,6 +232,9 @@ def _run(args: argparse.Namespace) -> int:
             df = out["diff"]
             print("  scene: no changes" if df["same"] else
                   f"  scene: {df['added']} added, {df['removed']} removed, {df['changed']} changed")
+        if out.get("played_ms"):
+            pm = out["played_ms"]
+            print(f"  played: {pm['min'] / 1000:.1f}-{pm['max'] / 1000:.1f} s before the second read")
         if out.get("shot"):
             print(f"  shot: {out['shot']}")
         if "hint" in out.get("before", {}):

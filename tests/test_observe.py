@@ -1,6 +1,7 @@
 """observe against a fake Editor: envelopes follow a live Unity 6000.3 Editor with Pipeline 0.10.0-exp.1
-(entering Play drops the instance from `unity status` during the reload; console entries carry seq,
-level, message, stackTrace)."""
+(`editor.playmode start` returns once Play runs, but `unity status` lists no instance for a few polls
+after it; `job batch` returns one result per op, a refused op carries `error`; console entries carry
+seq, level, message, stackTrace)."""
 import json
 
 from playcal import observe as ob
@@ -16,11 +17,12 @@ def ok(result):
 class Editor:
     def __init__(self, errors_in_play=(), objects=("Main Camera",), spawn=(), playing=False, reload_polls=2,
                  read_fails=False, capture_fails=False, paused=False, play_ignored=False, console_fails=False,
-                 console_reset=False):
+                 console_reset=False, no_batch=False, unbatchable=(), mute_after_start=False):
         self.objects, self.spawn, self.errors_in_play = list(objects), list(spawn), list(errors_in_play)
         self.playing, self.reload, self.reload_polls = playing, 0, reload_polls
         self.read_fails, self.capture_fails = read_fails, capture_fails
         self.paused, self.play_ignored, self.console_fails, self.console_reset = paused, play_ignored, console_fails, console_reset
+        self.no_batch, self.unbatchable, self.mute_after_start = no_batch, set(unbatchable), mute_after_start
         self.console, self.calls = [], []
 
     def __call__(self, args):
@@ -33,6 +35,23 @@ class Editor:
         if args[0] == "pipeline":
             return 0, {"data": {"instances": []}}
         cmd = args[1:3]
+        if self.mute_after_start and self.playing and cmd != ["editor.playmode", "stop"]:
+            return 1, {"success": False, "errors": [{"code": "UNITY_CLI_NO_INSTANCE", "message": "no editor"}]}
+        if cmd == ["job", "batch"] and not self.no_batch:
+            results = []
+            for op in json.loads(args[args.index("--operations") + 1]):
+                if op["command"] in self.unbatchable:
+                    results.append({"command": op["command"], "success": False, "error": "not batchable (not_batchable)"})
+                    continue
+                argv = ["command", *op["command"].split()]
+                for k, v in op["params"].items():
+                    argv += [f"--{k}"] + ([] if v is True else [str(v)])
+                rc, env = self(argv)
+                self.calls.pop()  # ran inside the one batch call
+                results.append({"command": op["command"], "success": bool(env.get("success")),
+                                **({"result": env["data"]["result"]} if env.get("success") else
+                                   {"error": env["errors"][0]["message"]})})
+            return ok({"results": results})
         if cmd == ["scene", "get_hierarchy"]:
             if self.read_fails:
                 return 1, {"success": False, "errors": [{"code": "COMMAND_FAILED", "message": "no scene"}]}
@@ -81,11 +100,11 @@ def names(ed):
     return [" ".join(c[1:3]) for c in ed.calls if c[0] == "command"]
 
 
-def test_clean_run_enters_play_waits_out_the_reload_and_leaves_play():
+def test_clean_run_enters_play_and_leaves_play():
     ed = Editor(spawn=["Enemy"])
     out = ob.observe(ed, P, **fast())
     assert out["ok"] and out["reason"] == "clean" and out["fault"] is None
-    assert "none" in out["entered_play"]["states_seen"]  # the reload was seen, not skipped over
+    assert out["entered_play"]["playing"] and out["played_ms"]["min"] >= 3000
     assert out["diff"]["added"] == 1 and out["diff"]["changes"][0]["path"] == "result.roots[hierarchyPath=/Enemy]"
     assert out["diff"]["changed"] == 0  # instanceIds differ between edit and play mode; left out
     assert "shot" not in out and out["left_play"] and not ed.playing
@@ -101,6 +120,27 @@ def test_console_error_in_play_is_red_and_gets_a_screenshot():
     assert con["first_cause"]["message"] == "boss has no target" and con["first_cause"]["file"] == "Assets/Boss.cs"
     assert out["shot"] == "C:/Games/Lab/.playcal/observe/boss.png"
     assert not ed.playing  # still leaves Play Mode on a red run
+
+
+def test_reads_are_batched_and_unity_status_lag_after_play_costs_nothing():
+    ed = Editor(reload_polls=10)  # `unity status` keeps saying "no Editor" for 10 polls after start
+    out = ob.observe(ed, P, **fast())
+    assert out["ok"] and [c[0] for c in ed.calls].count("status") == 2  # only the settle before
+    assert names(ed) == ["job batch", "editor.playmode start", "editor status", "job batch", "editor.playmode stop"]
+
+
+def test_a_read_the_batch_refuses_runs_on_its_own():
+    for ed in (Editor(spawn=["Enemy"], unbatchable={"scene get_hierarchy"}), Editor(spawn=["Enemy"], no_batch=True)):
+        out = ob.observe(ed, P, **fast())
+        assert out["ok"] and out["diff"]["added"] == 1, out
+        assert names(ed).count("scene get_hierarchy") == 2
+
+
+def test_op_turns_cli_words_into_batch_params():
+    assert ob._op(["gameobject", "get", "--path", "/Player", "--with-children", "--depth=2"]) == {
+        "command": "gameobject get", "params": {"path": "/Player", "with-children": True, "depth": "2"}}
+    assert ob._op(["scene", "get_hierarchy"]) == {"command": "scene get_hierarchy", "params": {}}
+    assert ob._op(["a", "b", "--k", "v", "stray"]) is None and ob._op(["--k", "v"]) is None
 
 
 def test_errors_from_before_the_run_dont_count():
@@ -141,10 +181,21 @@ def test_unreadable_console_is_not_clean():
     assert out["reason"] == "errors"  # errors that were read still count
 
 
-def test_settle_failing_after_play_starts_still_leaves_play():
-    ed = Editor(reload_polls=10**6)
+def test_editor_going_quiet_after_play_starts_still_leaves_play():
+    ed = Editor(mute_after_start=True)
     out = ob.observe(ed, P, timeout=3, **fast())
-    assert out["reason"] == "no_editor" and not ed.playing and out["console"]["read"]
+    assert out["reason"] == "timeout" and out["fault"] == "infra" and not ed.playing and out["left_play"]
+
+
+def test_elapsed_counts_the_stop_on_an_early_return():
+    ed, t = Editor(mute_after_start=True), fast()
+
+    def slow_stop(args):
+        if args[1:3] == ["editor.playmode", "stop"]:
+            t["sleep"](7)
+        return ed(args)
+    out = ob.observe(slow_stop, P, timeout=3, **t)
+    assert out["reason"] == "timeout" and out["elapsed_ms"] == round(t["clock"]() * 1000) >= 10000
 
 
 def test_play_that_never_starts_is_play_failed():

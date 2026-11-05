@@ -138,33 +138,33 @@ def _session(runner, project: str | None, folder: Path, request: dict, wait_for:
     if not d["before"]["settled"]:
         d["reason"] = d["before"]["reason"]
         return d
-    if observe._playing(runner, project):
+    con_mark, status = observe._reads(runner, project, [["console", "status"], ["editor", "status"]])
+    if observe._playing(status):
         d["reason"] = "already_playing"  # the request is only read when Play starts
         return d
+    mark = observe._mark(con_mark)
     folder.mkdir(parents=True, exist_ok=True)
     req = folder / "request"
     request = {**request, "created": int(time.time())}  # the SDK skips a request left over from an old run
     req.write_text("".join(f"{k}={v}\n" for k, v in request.items()), encoding="utf-8")
     try:  # never leave a request behind: the next Play would pick it up
-        mark = observe._console_mark(runner, project)
         res = loop._call(runner, ["editor.playmode", "start"], project)
         if not res["success"]:
             d["reason"], d["play_errors"] = "play_failed", res["errors"]
             return d
-        d["entered_play"] = loop.settle(runner, project, timeout, await_gone=10, sleep=sleep, clock=clock)
+        d["entered_play"] = observe._enter_play(runner, project, timeout, sleep, clock)
         got = None
-        if not d["entered_play"]["settled"]:
-            d["reason"] = d["entered_play"]["reason"]
-        elif not observe._playing(runner, project):
+        if d["entered_play"]["busy"]:
+            d["reason"] = "timeout"
+        elif not d["entered_play"]["playing"]:
             d["reason"], d["play_errors"] = "play_failed", [observe.NOT_PLAYING]
         else:
             got = _wait(wait_for, wait, sleep, clock)
             if got is None:  # a request still on disk was never read: the SDK isn't in the project
                 d["reason"] = "no_sdk" if req.exists() else "no_result"
-        d["console"] = observe._console_since(runner, project, mark, 20) if mark else {"read": False, "errors_seen": None}
-        if got is None or got != stay_on:
-            stop = loop._call(runner, ["editor.playmode", "stop"], project)
-            d["left_play"] = stop["success"] and loop.settle(runner, project, timeout, sleep=sleep, clock=clock)["settled"]
+        d["console"] = observe._console(loop._call(runner, observe._since(mark), project) if mark else None, 20)
+        if got is None or got != stay_on:  # stop comes back once Edit Mode is back
+            d["left_play"] = loop._call(runner, ["editor.playmode", "stop"], project)["success"]
         d["file"] = str(got) if got else None
         return d
     finally:

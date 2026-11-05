@@ -6,7 +6,7 @@ First public release. Everything here runs without Unity except `loop`, `observe
 
 - `loop`: settle, run one Editor command, settle again, read back and assert, one JSON digest with `fault: infra|task`.
 - `logs`, `query`, `snap`, `checkpoint`, `lock`, `doctor`.
-- `observe`: press Play, run the game a few seconds, report console errors, `--expect` checks and the scene diff; a Game view screenshot only when the run goes red.
+- `observe`: press Play, run the game a few seconds, report console errors, `--expect` checks and the scene diff; a Game view screenshot only when the run goes red. Reads go through `job batch` and Play Mode is checked with `editor status`, so a clean run is 7 CLI calls (~33 s live) instead of 16 (~70 s); `played_ms` says how long the game really ran.
 - `replay`: record input through the SDK, play it back with a fixed frame rate and seed, report the first frame where the marks differ; stop on a frame and step from there.
 - `baseline` (perf and memory), `visual` (screenshot gate), `tests` (flaky history, quarantine, affected test assemblies).
 - `ingest`, `report`, `calibrate`: an event schema with no room for personal data, per-level pass rates with Wilson intervals, and human pass-rate predictions from bot runs.
