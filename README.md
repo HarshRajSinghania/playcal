@@ -2,6 +2,7 @@
 
 [![test](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml/badge.svg)](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/playcal.svg)](https://pypi.org/project/playcal/)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 [![good first issues](https://img.shields.io/github/issues/RizgarOzan/playcal/good%20first%20issue?label=good%20first%20issues)](https://github.com/RizgarOzan/playcal/issues?q=is%3Aopen+label%3A%22good+first+issue%22)
 
@@ -34,11 +35,11 @@ Unity's official CLI and the community MCP servers give you the building blocks:
 Requires Python 3.10+.
 
 ```bash
-pipx install git+https://github.com/RizgarOzan/playcal
+pipx install playcal
 playcal modules
 ```
 
-`pipx install playcal` works once v0.1.0 is on PyPI. The Unity SDK installs from a git URL, see [Unity SDK](#unity-sdk-works-today).
+For the latest main, use `pipx install git+https://github.com/RizgarOzan/playcal`. The Unity SDK installs from a git URL, see [Unity SDK](#unity-sdk-works-today).
 
 ### Install with your AI agent
 
@@ -47,7 +48,7 @@ Paste this into Claude Code, Cursor, Codex or any agent with a shell:
 ```text
 Install playcal for this project:
 1. Make sure pipx exists (python -m pip install --user pipx && python -m pipx ensurepath).
-2. Run: pipx install git+https://github.com/RizgarOzan/playcal
+2. Run: pipx install playcal
 3. Run: playcal modules --json  and show me the module list.
 4. Read https://github.com/RizgarOzan/playcal#usage and tell me which commands fit this project.
 Do not change project files yet.

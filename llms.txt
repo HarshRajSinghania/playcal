@@ -3,7 +3,7 @@
 > Open-source toolkit for AI agents working on games (Unity first). Python CLI, every command supports --json. Pre-alpha: `ingest`, `report`, `calibrate`, `logs`, `query`, `snap`, `observe`, `replay`, `baseline`, `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, `mcp`, `skill` and the Unity SDK work today; `loop` is early.
 
 ## Install
-- `pipx install git+https://github.com/RizgarOzan/playcal` (Python 3.10+)
+- `pipx install playcal` (Python 3.10+)
 - Check: `playcal modules --json` lists the installed modules.
 - MCP server: `claude mcp add --transport stdio playcal -- playcal mcp`. Tools are named `playcal_<module>`.
 - Skill file instead of MCP: `playcal skill > .claude/skills/playcal/SKILL.md`.
