@@ -122,6 +122,7 @@ Boils a Unity `Editor.log` (or Player.log, or pasted console text) down to what 
 playcal logs --json                         # this machine's Editor.log
 playcal logs Editor.log --since "Reloading assemblies"
 cat Player.log | playcal logs -
+adb logcat -d | playcal logs -             # Android: only the Unity tag is read
 ```
 
 Exit code 1 means it found errors.

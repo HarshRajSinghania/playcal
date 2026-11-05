@@ -18,6 +18,7 @@ COMPILE = re.compile(r"^(?P<file>[^\s(][^(]*?)\((?P<line>\d+),(?P<col>\d+)\): (?
 EXCEPTION = re.compile(r"^(?P<type>[A-Za-z_][\w.]*(?:Exception|Error)): ?(?P<msg>.*)$")
 AT = re.compile(r"\(at (?P<file>[^:)]+(?::[^:)]+)?):(?P<line>\d+)\)")
 LOG_ERROR = re.compile(r"^UnityEngine\.Debug:Log(?:Error|Exception)")
+LOGCAT = re.compile(r"^\d\d-\d\d \d\d:\d\d:\d\d\.\d+ +\d+ +\d+ [VDIWEF] (?P<tag>\S+) *: ?(?P<msg>.*)$")
 
 
 def default_log() -> Path:
@@ -28,7 +29,19 @@ def default_log() -> Path:
     return Path("~/.config/unity3d/Editor.log").expanduser()
 
 
+def delogcat(lines: list[str]) -> list[str]:
+    """`adb logcat` (threadtime format) lines lose their date/pid/tag prefix; lines from other
+    tags than Unity become empty, so other apps' errors are not counted and line numbers still
+    point into the original dump. Lines that do not look like logcat pass through unchanged."""
+    out = []
+    for raw in lines:
+        m = LOGCAT.match(raw)
+        out.append(raw if not m else m["msg"] if m["tag"] == "Unity" else "")
+    return out
+
+
 def summarize(lines: list[str], limit: int = 20) -> dict:
+    lines = delogcat(lines)
     found: dict[tuple, dict] = {}
     order: list[tuple] = []
     warnings: dict[tuple, int] = {}

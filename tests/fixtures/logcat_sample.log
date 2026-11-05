@@ -1,0 +1,12 @@
+11-05 10:00:00.100  1234  1234 I Unity   : Loading scene Level1
+11-05 10:00:00.123  1234  1234 E Unity   : NullReferenceException: Object reference not set to an instance of an object.
+11-05 10:00:00.124  1234  1234 E Unity   :   at Player.Update () [0x00011] in <00000000000000000000000000000000>:0
+11-05 10:00:00.125  1234  1234 E Unity   : 
+11-05 10:00:00.200  2222  2222 E OtherApp: java.lang.IllegalStateException: not ours
+11-05 10:00:00.300  1234  1234 E Unity   : NullReferenceException: Object reference not set to an instance of an object.
+11-05 10:00:00.301  1234  1234 E Unity   :   at Player.Update () [0x00011] in <00000000000000000000000000000000>:0
+11-05 10:00:00.302  1234  1234 E Unity   : 
+11-05 10:00:00.400  1234  1234 E Unity   : Enemy count is zero
+11-05 10:00:00.401  1234  1234 E Unity   : UnityEngine.Debug:LogError(object)
+11-05 10:00:00.402  1234  1234 E Unity   : 
+11-05 10:00:00.500  1234  1234 I Unity   : Frame 100 ok

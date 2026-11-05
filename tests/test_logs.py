@@ -44,3 +44,17 @@ def test_cli_json(capsys):
     assert main(["logs", str(SAMPLE), "--since", "Begin MonoManager", "--json"]) == 1
     out = json.loads(capsys.readouterr().out)
     assert out["first_cause"]["message"].startswith("The name 'tiles'")
+
+
+def test_logcat_prefix_is_stripped_and_other_apps_are_ignored():
+    lines = (Path(__file__).parent / "fixtures" / "logcat_sample.log").read_text(encoding="utf-8").splitlines()
+    out = logs.summarize(lines)
+    kinds = [(e["kind"], e["code"], e["count"]) for e in out["errors"]]
+    assert kinds == [("exception", "NullReferenceException", 2), ("log_error", "LogError", 1)]
+    assert out["errors"][0]["first_line"] == 2 and out["error_total"] == 3
+    assert not any("IllegalState" in e["message"] for e in out["errors"])
+
+
+def test_editor_log_lines_are_not_touched_by_delogcat():
+    lines = SAMPLE.read_text(encoding="utf-8").splitlines()
+    assert logs.delogcat(lines) == lines
