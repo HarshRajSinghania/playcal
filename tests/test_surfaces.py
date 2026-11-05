@@ -75,3 +75,4 @@ def test_skill_md_lists_every_module():
     for name in MODS:
         assert f"## playcal {name}" in md
     assert "`--verify`" in md
+    assert "## Which command when" in md and md.index("## Which command when") < md.index("## playcal ")

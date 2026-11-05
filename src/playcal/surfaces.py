@@ -146,7 +146,17 @@ def skill_md() -> str:
              "description: Game-dev toolkit for agents. Use to read playtest results, summarize Unity logs, "
              "and run Unity Editor commands safely (wait until ready, run, verify). Every command takes --json.",
              "---", "", "# playcal", "",
-             "Run `playcal <command> --json` and read the JSON. Exit code 0 means ok.", ""]
+             "Run `playcal <command> --json` and read the JSON. Exit code 0 means ok.", "",
+             "## Which command when", "",
+             "- Before anything in a Unity project: `playcal doctor`. It says whether the CLI and an open Editor are reachable.",
+             "- Any Editor write (create, set_field, save_scene, recompile): `playcal loop run NAME -- ARGS` with `--verify` and `--expect`. "
+             "Never call `unity command` directly for a write; a success during a domain reload is not a landed change.",
+             "- Scripts changed: `playcal loop run ... --compile`, then `playcal logs --since \"Reloading assemblies\"` for the first cause.",
+             "- Something is red in the console: `playcal logs` first, it collapses repeats and names the first cause.",
+             "- Big command output: `playcal query` to keep only the fields you need instead of reading the whole hierarchy.",
+             "- Before a risky step: `playcal checkpoint save`; `playcal loop run --checkpoint` does it for you.",
+             "- Does it still run: `playcal observe` (press Play, diff the scene, collect errors), `playcal visual check` for a screenshot diff.",
+             "- Playtest data: `ingest` validates, `report` summarizes, `calibrate` predicts human pass rates from bot runs.", ""]
     for mod in load_modules():
         lines += [f"## playcal {mod.name}", "", mod.summary + ".", ""]
         for a in _actions(mod):
