@@ -3,9 +3,11 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 jobs:
   build:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +51,7 @@ jobs:
 
   mcp-registry:
     needs: pypi
+    if: always() && (needs.pypi.result == 'success' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       id-token: write

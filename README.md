@@ -1,6 +1,6 @@
 # playcal
 
-<!-- mcp-name: io.github.rizgarozan/playcal -->
+<!-- mcp-name: io.github.RizgarOzan/playcal -->
 
 [![test](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml/badge.svg)](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -61,7 +61,7 @@ Do not change project files yet.
 `playcal mcp` is a stdio MCP server. Every module becomes a tool (`playcal_ingest`, `playcal_logs`, `playcal_loop`, ...), built from the same argument definitions as the CLI, so the two can't drift apart.
 
 ```bash
-# or pick it from the MCP Registry as io.github.rizgarozan/playcal
+# or pick it from the MCP Registry as io.github.RizgarOzan/playcal
 claude mcp add --transport stdio playcal -- playcal mcp
 code --add-mcp '{"name":"playcal","type":"stdio","command":"playcal","args":["mcp"]}'
 ```

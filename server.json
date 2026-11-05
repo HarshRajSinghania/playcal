@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.rizgarozan/playcal",
+  "name": "io.github.RizgarOzan/playcal",
   "description": "Edit-settle-verify loop, observe, replay and log tools for AI agents working in the Unity Editor",
   "repository": {
     "url": "https://github.com/RizgarOzan/playcal",
