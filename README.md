@@ -60,6 +60,8 @@ Do not change project files yet.
 
 `playcal mcp` is a stdio MCP server. Every module becomes a tool (`playcal_ingest`, `playcal_logs`, `playcal_loop`, ...), built from the same argument definitions as the CLI, so the two can't drift apart.
 
+The server's `initialize` reply carries a short "which command when" guide as MCP `instructions`, the same lines that open the skill file, so an agent knows to run `doctor` first and to put Editor writes through `loop`.
+
 ```bash
 # or pick it from the MCP Registry as io.github.RizgarOzan/playcal
 claude mcp add --transport stdio playcal -- playcal mcp
@@ -125,7 +127,12 @@ cat Player.log | playcal logs -
 adb logcat -d | playcal logs -             # Android: only the Unity tag is read
 ```
 
-Exit code 1 means it found errors.
+Exit code 1 means it found errors. In CI it reads a batch-mode build log the same way, so the job fails on the first cause instead of a wall of fallout:
+
+```yaml
+- run: unity -batchmode -quit -projectPath . -executeMethod Build.Run -logFile build.log || true
+- run: pipx run playcal logs build.log --json
+```
 
 ### `playcal loop` (works on a live Editor)
 
