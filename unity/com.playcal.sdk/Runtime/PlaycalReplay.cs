@@ -44,9 +44,10 @@ namespace Playcal
         internal static InputTrack Track;  // recording: being written; replay: the source
         internal static int InputFrame => Frame < 0 ? 0 : Frame;
         static InputTrack seen;            // replay: marks this run wrote
-        static string name;
+        static string fileName;  // not "name": that would hide Object.name (CS0108)
         static int frames = -1, stopAt = -1, oldTargetFps;
         static PlaycalReplay instance;
+        const long MaxRequestAge = 600;  // seconds; entering Play on a big project can take minutes
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         static void ResetStatics()  // statics survive Play with domain reload turned off
@@ -63,23 +64,32 @@ namespace Playcal
             if (!Application.isEditor) return;
             var path = Path.Combine(Folder, "request");
             if (!File.Exists(path)) return;
-            string mode = "", req = "";
-            int n = -1, fps = 60, seed = 0, stop = -1;
-            foreach (var line in File.ReadAllLines(path))
-            {
-                int eq = line.IndexOf('=');
-                if (eq < 0) continue;
-                string k = line.Substring(0, eq).Trim(), v = line.Substring(eq + 1).Trim();
-                if (k == "mode") mode = v;
-                else if (k == "name") req = v;
-                else if (k == "frames") n = int.Parse(v, CultureInfo.InvariantCulture);
-                else if (k == "fps") fps = int.Parse(v, CultureInfo.InvariantCulture);
-                else if (k == "seed") seed = int.Parse(v, CultureInfo.InvariantCulture);
-                else if (k == "stop_at") stop = int.Parse(v, CultureInfo.InvariantCulture);
-            }
+            var lines = File.ReadAllLines(path);
             File.Delete(path);  // one request, one Play session
             try
             {
+                string mode = "", req = "";
+                int n = -1, fps = 60, seed = 0, stop = -1;
+                long created = -1;
+                foreach (var line in lines)
+                {
+                    int eq = line.IndexOf('=');
+                    if (eq < 0) continue;
+                    string k = line.Substring(0, eq).Trim(), v = line.Substring(eq + 1).Trim();
+                    if (k == "mode") mode = v;
+                    else if (k == "name") req = v;
+                    else if (k == "frames") n = int.Parse(v, CultureInfo.InvariantCulture);
+                    else if (k == "fps") fps = int.Parse(v, CultureInfo.InvariantCulture);
+                    else if (k == "seed") seed = int.Parse(v, CultureInfo.InvariantCulture);
+                    else if (k == "stop_at") stop = int.Parse(v, CultureInfo.InvariantCulture);
+                    else if (k == "created") created = long.Parse(v, CultureInfo.InvariantCulture);
+                }
+                // playcal removes its request when it's done; one still here from a killed run isn't for this Play
+                if (created >= 0 && DateTimeOffset.UtcNow.ToUnixTimeSeconds() - created > MaxRequestAge)
+                {
+                    Debug.LogWarning($"playcal replay: ignored a request from {DateTimeOffset.FromUnixTimeSeconds(created):u}");
+                    return;
+                }
                 if (mode == "record") Record(req, n, fps, seed);
                 else if (mode == "replay") Play(req, stop);
                 else Debug.LogError($"playcal replay: unknown mode \"{mode}\" in {path}");
@@ -107,21 +117,33 @@ namespace Playcal
             Current = Mode.Replay;
         }
 
-        /// <summary>Notes a value the replay should reproduce (score, position, a state name).</summary>
+        /// <summary>Notes a value the replay should reproduce (score, position, a state name).
+        /// Does nothing when no replay is recording or playing, so it can stay in shipped code.</summary>
         public static void Mark(string markName, object value)
         {
-            var text = value is IFormattable f ? f.ToString(value is float || value is double ? "R" : null, CultureInfo.InvariantCulture)
-                                               : value?.ToString() ?? "";
-            if (Current == Mode.Record) Track.AddMark(InputFrame, markName, text);
-            else if (Current == Mode.Replay) seen.AddMark(InputFrame, markName, text);
+            if (Current == Mode.Off) return;
+            AddMark(markName, value is IFormattable f ? f.ToString(value is float || value is double ? "R" : null, CultureInfo.InvariantCulture)
+                                                      : value?.ToString() ?? "");
         }
+
+        public static void Mark(string markName, int value)
+        {
+            if (Current != Mode.Off) AddMark(markName, value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        public static void Mark(string markName, float value)
+        {
+            if (Current != Mode.Off) AddMark(markName, value.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        static void AddMark(string markName, string text) => (Current == Mode.Record ? Track : seen).AddMark(InputFrame, markName, text);
 
         static void Begin(string replayName, InputTrack track)
         {
             if (string.IsNullOrEmpty(replayName) || replayName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
                 throw new ArgumentException($"bad replay name \"{replayName}\"");
             if (instance != null) throw new InvalidOperationException("a replay is already running");
-            name = replayName;
+            fileName = replayName;
             Track = track;
             Frame = -1;
             Time.captureFramerate = track.Fps;
@@ -134,8 +156,13 @@ namespace Playcal
         void Update()
         {
             Frame++;
-            if (Current == Mode.Record && frames >= 0 && Frame >= frames) { Finish(Frame - 1); return; }
-            if (Current == Mode.Replay && Track.EndFrame >= 0 && Frame > Track.EndFrame) { Finish(Frame - 1); return; }
+            if ((Current == Mode.Record && frames >= 0 && Frame >= frames) ||
+                (Current == Mode.Replay && Track.EndFrame >= 0 && Frame > Track.EndFrame))
+            {
+                Finish(Frame - 1);
+                Destroy(gameObject);
+                return;
+            }
             if (Current == Mode.Replay && Frame == stopAt)
             {
                 Write(".paused", Frame.ToString(CultureInfo.InvariantCulture) + "\n");
@@ -161,12 +188,13 @@ namespace Playcal
             }
             Current = Mode.Off;
             Time.captureFramerate = 0;
+            instance = null;  // another Record or Play may start in the same Play session
         }
 
         static void Write(string ext, string text)
         {
             Directory.CreateDirectory(Folder);
-            var path = Path.Combine(Folder, name + ext);
+            var path = Path.Combine(Folder, fileName + ext);
             File.WriteAllText(path + ".tmp", text);  // Python polls for the file; never let it see half of one
             if (File.Exists(path)) File.Delete(path);
             File.Move(path + ".tmp", path);

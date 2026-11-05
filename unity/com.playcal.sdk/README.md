@@ -52,7 +52,7 @@ bool jump = PlaycalInput.Button("jump", Input.GetButton("Jump"));
 PlaycalReplay.Mark("score", score);
 ```
 
-With no replay running these return the live value and `Mark` does nothing. `playcal replay record` / `run` start one through a request file when Play starts; from code, `PlaycalReplay.Record("name", frames: 600)` and `PlaycalReplay.Play("name")` do the same. Files go to `<project>/.playcal/replays/`. The request file is only read in the Editor, and `Record` / `Play` from code haven't been tried in a player build yet.
+With no replay running these return the live value and `Mark` does nothing. `Mark` has `int` and `float` overloads, so marking a number every frame in a normal game session doesn't box it or allocate anything. `playcal replay record` / `run` start one through a request file when Play starts; from code, `PlaycalReplay.Record("name", frames: 600)` and `PlaycalReplay.Play("name")` do the same. Files go to `<project>/.playcal/replays/`. The request file is only read in the Editor, and one older than 10 minutes (left behind by a run that crashed) is deleted with a warning instead of starting a replay; and `Record` / `Play` from code haven't been tried in a player build yet.
 
 Frame samples are only frame time, GC bytes and used memory, nothing about the player. In the Editor, GC numbers include the Editor's own allocations, so take baselines from a player build.
 

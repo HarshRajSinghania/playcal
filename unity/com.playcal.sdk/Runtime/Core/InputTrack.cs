@@ -48,9 +48,9 @@ namespace Playcal
         /// <summary>Stores a channel's value at a frame; a value equal to the current one is not stored.</summary>
         public void Set(int frame, string channel, float value)
         {
-            CheckName(channel);
             if (!channels.TryGetValue(channel, out var list))
             {
+                CheckName(channel);  // once per channel: Set runs every frame
                 channels[channel] = list = new List<KeyValuePair<int, float>>();
                 names.Add(channel);
             }
@@ -139,9 +139,11 @@ namespace Playcal
         static void MarkLine(StringBuilder sb, Mark m) =>
             sb.Append(m.Frame.ToString(CultureInfo.InvariantCulture)).Append(" mark ").Append(m.Name).Append(' ').Append(m.Value).Append('\n');
 
+        static readonly char[] Whitespace = { ' ', '\t', '\n', '\r' };
+
         static void CheckName(string name)
         {
-            if (string.IsNullOrEmpty(name) || name.IndexOfAny(new[] { ' ', '\t', '\n', '\r' }) >= 0)
+            if (string.IsNullOrEmpty(name) || name.IndexOfAny(Whitespace) >= 0)
                 throw new ArgumentException($"names can't be empty or hold whitespace: \"{name}\"");
         }
     }
