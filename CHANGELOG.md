@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-11-05)
 
 First public release. Everything here runs without Unity except `loop`, `observe`, `replay`, `doctor`'s Editor checks and the Unity SDK; those were checked on a live Unity 6000.3 Editor with Pipeline 0.10.0-exp.1.
 

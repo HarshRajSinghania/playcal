@@ -12,6 +12,10 @@
           what changed in the --verify read between before and after. When the command says
           it needs a recompile (package resolve does), the second settle first waits for the
           reload to start, so a reload that begins a few seconds later isn't missed.
+          A write that doesn't ask for a reload skips the second settle: one `job batch` asks
+          `editor status` and runs the --verify read in the same call. The read counts only when
+          the Editor says it's ready, not compiling and not reloading; otherwise loop settles and
+          reads again. Every `unity` call costs about 3 s, so this is 4 calls a write instead of 6.
 
 Every digest says whose fault a failure is: "infra" (no Editor, Safe Mode, stuck, CLI broken)
 or "task" (the command failed, or it said it worked but the check disagrees).
@@ -26,7 +30,7 @@ import shlex
 import subprocess
 import sys
 import time
-from typing import Callable
+from typing import Callable, Sequence
 
 from . import checks
 from .registry import Module
@@ -140,6 +144,39 @@ def _call(runner: Runner, argv: list[str], project: str | None) -> dict:
             "errors": env.get("errors") or [], "warnings": env.get("warnings") or [], "data": env.get("data")}
 
 
+def _op(argv: Sequence[str]) -> dict | None:
+    """`scene get_hierarchy --path X` as a batch op: {"command": "scene get_hierarchy", "params": {"path": "X"}}.
+    None when the words don't fit that shape (a stray positional argument)."""
+    words = list(argv)
+    i = next((k for k, w in enumerate(words) if w.startswith("--")), len(words))
+    params, rest = {}, words[i:]
+    while rest:
+        flag = rest.pop(0)
+        if not flag.startswith("--"):
+            return None
+        key, eq, val = flag[2:].partition("=")
+        params[key] = val if eq else rest.pop(0) if rest and not rest[0].startswith("--") else True
+    return {"command": " ".join(words[:i]), "params": params} if i else None
+
+
+def _reads(runner, project, reads: Sequence[Sequence[str]]) -> list[dict]:
+    """Several Editor reads in one `job batch` call; each result looks like loop._call's. A read that
+    fails inside the batch (not batchable, or an older Pipeline without `job batch`) runs again on
+    its own, so its error is the one the plain command gives."""
+    ops = [_op(r) for r in reads]
+    out: list = [None] * len(reads)
+    if sum(o is not None for o in ops) > 1:
+        res = _call(runner, ["job", "batch", "--operations", json.dumps([o for o in ops if o]),
+                                  "--on-error", "continue"], project)
+        items = iter((((res["data"] or {}).get("result") or {}).get("results") or []) if res["success"] else [])
+        for k, o in enumerate(ops):
+            item = next(items, None) if o else None
+            if o and item and item.get("success"):
+                out[k] = {"success": True, "exit_code": 0, "errors": [], "warnings": [],
+                          "data": {"command": o["command"], "parameters": o["params"], "result": item.get("result")}}
+    return [r or _call(runner, list(argv), project) for r, argv in zip(out, reads)]
+
+
 def compile_check(runner: Runner, project: str | None, timeout: float = 120, **settle_kw) -> dict:
     """`unity recompile`, trimmed to what an agent needs. A recompile sent while Unity's own
     auto-refresh is reloading fails (400, timeout, no instance), so settle and try once more."""
@@ -197,6 +234,27 @@ def _save_checkpoint(repo: str, message: str) -> dict:
         return {"error": str(e)}
 
 
+def _state(data):
+    """What the Editor returned, without the request echo (command, parameters, target): a batched
+    read echoes them differently from a plain one, and --diff shouldn't report that."""
+    return {"result": data["result"]} if isinstance(data, dict) and "result" in data else data
+
+
+def _idle_read(runner: Runner, project: str | None, verify: list[str] | None) -> tuple[dict, dict | None] | None:
+    """After a write that starts no reload: `editor status` and the --verify read in one batch call,
+    instead of two status polls and a separate read. Counts only when the Editor itself says it is
+    ready, not compiling and not reloading; None sends the caller back to settle."""
+    t0 = time.monotonic()
+    res = _reads(runner, project, [["editor", "status"], *([verify] if verify else [])])
+    st = ((res[0]["data"] or {}).get("result") or {}) if res[0]["success"] else {}
+    if st.get("status") != "ready" or st.get("compiling") is not False or st.get("domainReloadInProgress") is not False:
+        return None
+    after = {"settled": True, "reason": "ready", "project": project or st.get("projectPath"), "state": "ready",
+             "states_seen": ["ready"], "waited_ms": round((time.monotonic() - t0) * 1000), "via": "editor status",
+             "code_load_count": st.get("codeLoadCount")}
+    return after, (res[1] if verify else None)
+
+
 def run_command(runner: Runner, name: str, params: list[str], project: str | None = None, timeout: float = 120,
                 verify: list[str] | None = None, expect: list[str] = (), want_diff: bool = False,
                 checkpoint: str | None = None, compile: bool = False, reload_wait: float | None = None,
@@ -212,7 +270,12 @@ def run_command(runner: Runner, name: str, params: list[str], project: str | Non
     snapshot = _call(runner, verify, project) if verify and want_diff else None
     digest["result"] = _call(runner, [name, *params], project)
     wait = reload_wait if reload_wait is not None else 20 if _wants_reload(digest["result"]["data"]) else 0
-    digest["after"] = settle(runner, project, timeout, await_gone=wait, **settle_kw)
+    quick = _idle_read(runner, project, verify) if not wait and not compile and digest["result"]["success"] else None
+    if quick:
+        digest["after"], read = quick
+    else:
+        digest["after"] = settle(runner, project, timeout, await_gone=wait, **settle_kw)
+        read = None
     if wait:
         digest["after"]["reload_seen"] = "none" in digest["after"]["states_seen"]
     reason = ("command_failed" if not digest["result"]["success"] else
@@ -221,12 +284,12 @@ def run_command(runner: Runner, name: str, params: list[str], project: str | Non
         reason = _compile_step(digest, runner, project, timeout, settle_kw) or "ready"
 
     if reason == "ready" and (verify or expect):
-        read = _call(runner, verify, project) if verify else digest["result"]
+        read = read or (_call(runner, verify, project) if verify else digest["result"])
         if verify:
             digest["verify"] = {"command": verify, "success": read["success"], "errors": read["errors"]}
         digest["checks"] = [checks.check(read["data"], e) for e in expect]
         if snapshot is not None and snapshot["success"] and read["success"]:
-            digest["diff"] = checks.diff(snapshot["data"], read["data"])
+            digest["diff"] = checks.diff(_state(snapshot["data"]), _state(read["data"]))
         if not read["success"]:
             reason, digest["fault"] = "verify_failed", _fault("command_failed", read)
         elif not all(c["ok"] for c in digest["checks"]):
