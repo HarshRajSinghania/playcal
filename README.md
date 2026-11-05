@@ -1,5 +1,10 @@
 # playcal
 
+[![test](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml/badge.svg)](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+[![good first issues](https://img.shields.io/github/issues/RizgarOzan/playcal/good%20first%20issue?label=good%20first%20issues)](https://github.com/RizgarOzan/playcal/issues?q=is%3Aopen+label%3A%22good+first+issue%22)
+
 **One open-source toolkit for AI agents that build games.** It gives your agent a loop it can trust (edit → wait until the editor has really settled → check the change actually landed → look only at what changed → assert), and it checks bot playtests against real players: *"the bot finds level 12 easy, but people will pass it about 41% of the time (CI 30–53%)."*
 
 Unity first, built on top of Unity's official CLI. Godot and Unreal plug into the same core later.
