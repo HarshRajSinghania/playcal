@@ -8,7 +8,7 @@ import zlib
 from playcal.visual import SIG, diff, read_png, write_png
 
 
-def encode(path, w, h, rows, ctype, bpp):
+def encode(path, w, h, rows, ctype, bpp, depth=8):
     """Test-side PNG writer that uses every filter type, to exercise the reader's unfiltering."""
     chunk = lambda k, b: struct.pack(">I", len(b)) + k + b + struct.pack(">I", zlib.crc32(k + b))
     raw, prev = bytearray(), bytes(w * bpp)
@@ -27,7 +27,7 @@ def encode(path, w, h, rows, ctype, bpp):
             out.append((v - pred) & 255)
         raw += bytes([f]) + out
         prev = row
-    path.write_bytes(SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, ctype, 0, 0, 0))
+    path.write_bytes(SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, depth, ctype, 0, 0, 0))
                      + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b""))
 
 
@@ -69,3 +69,19 @@ def test_cli_save_then_check(tmp_path):
     assert r.returncode == 1 and out["changed_pixels"] == 5 and (tmp_path / "b" / "lvl.diff.png").exists()
     assert run("check", "lvl", str(tmp_path / "shot2.png"), "--ignore", "5,5,9,5").returncode == 0
     assert run("check", "lvl", str(tmp_path / "shot2.png"), "--ignore", "5,5").returncode == 2
+
+
+def test_16_bit_png_is_read_at_8_bits(tmp_path):
+    rnd = random.Random(2)
+    w, h = 5, 6
+    # RGBA, 16 bits per sample, big-endian: the high byte must survive, the low byte is dropped.
+    rgba16 = [bytes(rnd.randrange(256) for _ in range(w * 8)) for _ in range(h)]
+    encode(tmp_path / "deep.png", w, h, rgba16, 6, 8, depth=16)
+    got_w, got_h, rows = read_png(tmp_path / "deep.png")
+    assert (got_w, got_h) == (w, h)
+    assert rows == [r[0::2] for r in rgba16]
+    # 16-bit grey, no alpha, every filter type again
+    grey16 = [bytes(rnd.randrange(256) for _ in range(w * 2)) for _ in range(h)]
+    encode(tmp_path / "grey.png", w, h, grey16, 0, 2, depth=16)
+    rows = read_png(tmp_path / "grey.png")[2]
+    assert [r[0::4] for r in rows] == [r[0::2] for r in grey16] and all(r[3::4] == b"\xff" * w for r in rows)

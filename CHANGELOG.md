@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `visual` reads 16-bit PNGs too (grey, RGB, RGBA); they are compared at 8 bits, the high byte of each sample (#1).
+- `logs` reads `adb logcat` dumps: the threadtime prefix is stripped and only the Unity tag is counted (#3).
+- `bench/live.py --scenario NAME` runs a single scenario (#2).
+
 ## 0.1.2 (2026-11-05)
 
 - README only: the MCP Registry name is `io.github.RizgarOzan/playcal`, with the GitHub login's case. 0.1.1 shipped it lowercase, so the registry could not match the PyPI package. No code change.

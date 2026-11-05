@@ -268,7 +268,7 @@ playcal visual check level4-start shot.png     # exit 1 if more than 0.1% of pix
 # changed: 4096 pixels (0.1975%) differ, box [900, 300, 963, 363], see .playcal/visual/level4-start.diff.png
 ```
 
-A pixel counts as changed when one of its channels moves by more than `--tolerance` (default 8 out of 255), so antialiasing and compression noise pass while a missing sprite doesn't. `--max-changed` sets how many percent of pixels may change. On a fail it writes a diff PNG with the changed pixels in red over a pale copy of the new shot, and the box tells an agent where to look. It reads 8-bit PNGs (grey, RGB, RGBA, no interlace) with the standard library only; a 1920x1080 shot takes about 2 s. Take shots at a fixed resolution, with animations paused, or the gate measures the animation. A part that changes on its own, like a clock or an FPS counter, can be skipped with `--ignore x0,y0,x1,y1` (repeat it for more boxes).
+A pixel counts as changed when one of its channels moves by more than `--tolerance` (default 8 out of 255), so antialiasing and compression noise pass while a missing sprite doesn't. `--max-changed` sets how many percent of pixels may change. On a fail it writes a diff PNG with the changed pixels in red over a pale copy of the new shot, and the box tells an agent where to look. It reads 8- and 16-bit PNGs (grey, RGB, RGBA, no interlace) with the standard library only, and compares 16-bit shots at 8 bits (the high byte of each sample); a 1920x1080 shot takes about 2 s. Take shots at a fixed resolution, with animations paused, or the gate measures the animation. A part that changes on its own, like a clock or an FPS counter, can be skipped with `--ignore x0,y0,x1,y1` (repeat it for more boxes).
 
 ### `playcal lock` (works today)
 

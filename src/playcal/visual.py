@@ -1,6 +1,6 @@
 """playcal visual: a screenshot gate. Save a PNG as the baseline, then check later shots against it
 with a per-pixel tolerance, so antialiasing noise passes and a missing sprite fails. On a fail it
-writes a diff PNG with the changed pixels in red. Standard library only (8-bit PNGs, no interlace).
+writes a diff PNG with the changed pixels in red. Standard library only (8- and 16-bit PNGs, no interlace).
 """
 from __future__ import annotations
 
@@ -42,9 +42,9 @@ def read_png(path: Path) -> tuple[int, int, list[bytes]]:
     if not ihdr:
         raise PngError(f"{path}: no IHDR")
     w, h, depth, ctype, _, _, interlace = ihdr
-    if depth != 8 or ctype not in CHANNELS or interlace:
-        raise PngError(f"{path}: only 8-bit grey/RGB/RGBA PNGs without interlace (got depth {depth}, type {ctype})")
-    bpp = CHANNELS[ctype]
+    if depth not in (8, 16) or ctype not in CHANNELS or interlace:
+        raise PngError(f"{path}: only 8- or 16-bit grey/RGB/RGBA PNGs without interlace (got depth {depth}, type {ctype})")
+    bpp = CHANNELS[ctype] * (depth // 8)
     raw = zlib.decompress(b"".join(idat))
     stride = w * bpp
     rows, prev = [], bytearray(stride)
@@ -69,7 +69,8 @@ def read_png(path: Path) -> tuple[int, int, list[bytes]]:
         elif f != 0:
             raise PngError(f"{path}: bad filter {f} on row {y}")
         prev = cur
-        rows.append(_rgba(bytes(cur), ctype, w))
+        # 16-bit samples are compared at 8 bits: the high byte of each sample is kept.
+        rows.append(_rgba(bytes(cur[0::2] if depth == 16 else cur), ctype, w))
     return w, h, rows
 
 
@@ -130,7 +131,7 @@ def diff(a: tuple[int, int, list[bytes]], b: tuple[int, int, list[bytes]], toler
 def _add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("action", choices=["save", "check"], help="save: make this PNG the baseline; check: compare a PNG to it")
     p.add_argument("name", help="baseline name, e.g. level4-start")
-    p.add_argument("png", help="the screenshot (8-bit PNG)")
+    p.add_argument("png", help="the screenshot (8- or 16-bit PNG)")
     p.add_argument("--dir", default=".playcal/visual", help="where baselines live (default .playcal/visual)")
     p.add_argument("--tolerance", type=int, default=8, help="per-channel difference a pixel may have, 0-255 (default 8)")
     p.add_argument("--max-changed", type=float, default=0.1, help="percent of pixels allowed to change (default 0.1)")
