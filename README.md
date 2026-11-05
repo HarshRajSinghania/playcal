@@ -13,7 +13,9 @@ Unity first, built on top of Unity's official CLI. Godot and Unreal plug into th
 
 > **Status: pre-alpha (v0.1.0).** Today the event schema, `ingest`, `report`, `calibrate`, `logs`, `loop`, `query`, `snap`, `observe`, `replay`, `baseline` (perf and memory), `visual`, `tests`, `affected`, `lock`, `checkpoint`, `doctor`, the MCP server and the Unity SDK work; `loop`, `query`, `snap`, `observe`, `replay` and the SDK frame recorder were checked on a live Unity 6000.3 Editor. Everything below marked *planned* isn't built yet. I'd rather show a short honest list than a long fake one. Progress is tracked in the [roadmap](#roadmap).
 
-<!-- DEMO: a 30-second GIF goes here with the first release (agent fixes a level, playcal catches the regression). No mock-ups. -->
+![A script spawns coins from a null prefab: playcal observe runs the game, reports the exception with file and line and exits 1; after the fix it exits 0](docs/demo.gif)
+
+*A real run on a live Unity 6000.3 Editor: the text is what playcal printed, and the waits are sped up (their real length is shown).*
 
 ## Why
 
