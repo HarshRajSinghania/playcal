@@ -27,7 +27,7 @@ class SimEditor:
 
     def __init__(self, states, noop=False, safe_mode=False, dialog=False, throws=False):
         self.states, self.noop, self.safe_mode, self.dialog, self.throws = states, noop, safe_mode, dialog, throws
-        self.tick, self.objects, self.errors, self.reload = 0, ["Main Camera"], [], 0
+        self.tick, self.objects, self.errors, self.reload, self.playing = 0, ["Main Camera"], [], 0, False
 
     def state(self):
         return self.states[min(self.tick, len(self.states) - 1)]
@@ -56,7 +56,8 @@ class SimEditor:
                 self.objects.append(args[args.index("--name") + 1])
             return 0, {"success": True, "data": {}}
         if name == "editor.playmode":
-            if args[2] == "start":
+            self.playing = args[2] == "start"
+            if self.playing:
                 self.reload = 2
                 if self.throws and "Probe" in self.objects:  # the new object's script throws on its first frame
                     self.errors.append({"seq": len(self.errors) + 1, "message": "NullReferenceException: Object reference "
@@ -66,7 +67,7 @@ class SimEditor:
             since = int(args[args.index("--since") + 1]) if "--since" in args else 0
             return 0, {"success": True, "data": {"result": {"cursor": len(self.errors), "entries": self.errors[since:]}}}
         if name in ("editor", "capture"):
-            return 0, {"success": True, "data": {"result": {"playMode": "stopped"}}}
+            return 0, {"success": True, "data": {"result": {"playMode": "playing" if self.playing else "stopped"}}}
         return 1, {"success": False, "errors": [{"code": "UNKNOWN_COMMAND"}]}
 
 

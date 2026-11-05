@@ -22,7 +22,8 @@ from typing import Callable, Sequence
 from . import checks, logs, loop, snap
 from .registry import Module
 
-EXIT = {"clean": 0, "errors": 1, "expect_failed": 1, "read_failed": 1, "play_failed": 1}
+EXIT = {"clean": 0, "errors": 1, "expect_failed": 1, "read_failed": 1, "play_failed": 1, "console_unread": 3}
+NOT_PLAYING = {"code": "NOT_PLAYING", "message": "the Editor didn't enter Play Mode (compile errors block it)"}
 
 
 def _console_mark(runner, project) -> dict | None:
@@ -49,9 +50,20 @@ def _console_since(runner, project, mark: dict, limit: int) -> dict:
     return out
 
 
+def _console_verdict(con: dict) -> str | None:
+    """"errors" if errors were read; "console_unread" if some could have been missed; else None."""
+    if con.get("errors_seen"):
+        return "errors"
+    if not con.get("read") or con.get("reset") or con.get("dropped"):
+        return "console_unread"
+    return None
+
+
 def _playing(runner, project) -> bool:
+    """In Play Mode, running or paused."""
     res = loop._call(runner, ["editor", "status"], project)
-    return ((res["data"] or {}).get("result") or {}).get("playMode") == "playing" if res["success"] else False
+    mode = ((res["data"] or {}).get("result") or {}).get("playMode") if res["success"] else None
+    return mode in ("playing", "paused")
 
 
 def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", "get_hierarchy"), seconds: float = 3,
@@ -65,7 +77,7 @@ def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", 
     def done(reason: str, result=None) -> dict:
         d["ok"], d["reason"] = reason == "clean", reason
         # our own reasons are the game's fault unless the CLI itself broke; settle's keep loop's verdict
-        d["fault"] = (None if reason == "clean" else
+        d["fault"] = (None if reason == "clean" else "infra" if reason == "console_unread" else
                       loop._fault("command_failed" if reason in EXIT else reason, result))
         d["elapsed_ms"] = round((clock() - t0) * 1000)
         return d
@@ -77,32 +89,43 @@ def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", 
         d["read_errors"] = first["errors"]
         return done("read_failed", first)
     mark = _console_mark(runner, project)
-    started = False
-    if play and not _playing(runner, project):
-        res = loop._call(runner, ["editor.playmode", "start"], project)
-        if not res["success"]:
-            d["play_errors"] = res["errors"]
-            return done("play_failed", res)
-        started = True
-        d["entered_play"] = loop.settle(runner, project, timeout, await_gone=10, sleep=sleep, clock=clock)
-        if not d["entered_play"]["settled"]:
-            return done(d["entered_play"]["reason"])
-    sleep(seconds)
 
-    second = loop._call(runner, list(read), project)
-    d["console"] = _console_since(runner, project, mark, 20) if mark else {"read": False, "errors_seen": None}
-    d["checks"] = [checks.check(second["data"], e) for e in expect] if second["success"] else []
-    reason = ("read_failed" if not second["success"] else "errors" if d["console"].get("errors_seen")
-              else "expect_failed" if not all(c["ok"] for c in d["checks"]) else "clean")
-    if not second["success"]:
-        d["read_errors"] = second["errors"]
-    if reason != "clean" and shots:
-        cap = loop._call(runner, ["capture", "game_view", "--output-path", f"{shots.rstrip('/')}/{name}.png"], project)
-        res = (cap["data"] or {}).get("result") or {}
-        d["shot"] = res.get("savedPath") if cap["success"] else {"failed": cap["errors"]}
-    if started:
-        res = loop._call(runner, ["editor.playmode", "stop"], project)
-        d["left_play"] = res["success"] and loop.settle(runner, project, timeout, sleep=sleep, clock=clock)["settled"]
+    def console() -> dict:
+        return _console_since(runner, project, mark, 20) if mark else {"read": False, "errors_seen": None}
+
+    started = False
+    try:  # whatever happens after Play starts, leave Play Mode again
+        if play and not _playing(runner, project):
+            res = loop._call(runner, ["editor.playmode", "start"], project)
+            if not res["success"]:
+                d["play_errors"] = res["errors"]
+                return done("play_failed", res)
+            started = True
+            d["entered_play"] = loop.settle(runner, project, timeout, await_gone=10, sleep=sleep, clock=clock)
+            if not d["entered_play"]["settled"]:
+                d["console"] = console()
+                return done(d["entered_play"]["reason"])
+            if not _playing(runner, project):
+                d["console"], d["play_errors"] = console(), [NOT_PLAYING]
+                return done("play_failed")
+        sleep(seconds)
+
+        second = loop._call(runner, list(read), project)
+        d["console"] = console()
+        d["checks"] = [checks.check(second["data"], e) for e in expect] if second["success"] else []
+        heard = _console_verdict(d["console"])
+        reason = ("read_failed" if not second["success"] else "errors" if heard == "errors"
+                  else "expect_failed" if not all(c["ok"] for c in d["checks"]) else heard or "clean")
+        if not second["success"]:
+            d["read_errors"] = second["errors"]
+        if reason != "clean" and shots:
+            cap = loop._call(runner, ["capture", "game_view", "--output-path", f"{shots.rstrip('/')}/{name}.png"], project)
+            res = (cap["data"] or {}).get("result") or {}
+            d["shot"] = res.get("savedPath") if cap["success"] else {"failed": cap["errors"]}
+    finally:
+        if started:
+            res = loop._call(runner, ["editor.playmode", "stop"], project)
+            d["left_play"] = res["success"] and loop.settle(runner, project, timeout, sleep=sleep, clock=clock)["settled"]
     if second["success"]:
         d["diff"] = snap.compare(first["data"], second["data"], ignore, limit)
     return done(reason, second)

@@ -30,7 +30,7 @@ from .registry import Module
 HEADER = "playcal-replay 1"
 EXIT = {"match": 0, "recorded": 0, "paused": 0, "stepped": 0, "diverged": 1, "ended_early": 1, "errors": 1,
         "bad_file": 2, "no_recording": 2, "exists": 2, "no_project": 2, "already_playing": 2, "not_playing": 2,
-        "play_failed": 1, "no_sdk": 1, "no_result": 3, "eval_failed": 1}
+        "play_failed": 1, "no_sdk": 1, "no_result": 3, "eval_failed": 1, "no_marks": 1, "console_unread": 3}
 
 
 class ReplayError(Exception):
@@ -64,16 +64,24 @@ def parse(text: str) -> dict:
 
 
 def _same(a: str, b: str, tolerance: float) -> bool:
+    """Same text, or two equal whole numbers, or two other numbers within the absolute tolerance."""
+    if a == b:
+        return True
+    try:
+        return int(a) == int(b)
+    except ValueError:
+        pass
     try:
         x, y = float(a), float(b)
     except ValueError:
-        return a == b
-    return math.isclose(x, y, rel_tol=tolerance, abs_tol=tolerance) or (math.isnan(x) and math.isnan(y))
+        return False
+    return abs(x - y) <= tolerance or (math.isnan(x) and math.isnan(y))
 
 
 def compare(recorded: dict, replayed: dict, tolerance: float = 1e-4) -> dict:
     """Walks both mark lists in order. The first mark that differs in frame, name or value (numbers
-    within tolerance) is the divergence; a mark only one side has counts too."""
+    within tolerance) is the divergence; a mark only one side has counts too. No marks at all proves
+    nothing, so it isn't a match."""
     a, b = recorded["marks"], replayed["marks"]
     out: dict = {"marks_recorded": len(a), "marks_replayed": len(b), "end_recorded": recorded["end"],
                  "end_replayed": replayed["end"], "first_divergence": None}
@@ -87,7 +95,8 @@ def compare(recorded: dict, replayed: dict, tolerance: float = 1e-4) -> dict:
                                    "got": {"frame": y[0], "name": y[1], "value": y[2]} if y else None}
         break
     early = recorded["end"] is not None and (replayed["end"] is None or replayed["end"] < recorded["end"])
-    out["reason"] = "diverged" if out["first_divergence"] else "ended_early" if early else "match"
+    out["reason"] = ("diverged" if out["first_divergence"] else "ended_early" if early
+                     else "no_marks" if not a and not b else "match")
     return out
 
 
@@ -134,27 +143,32 @@ def _session(runner, project: str | None, folder: Path, request: dict, wait_for:
         return d
     folder.mkdir(parents=True, exist_ok=True)
     req = folder / "request"
+    request = {**request, "created": int(time.time())}  # the SDK skips a request left over from an old run
     req.write_text("".join(f"{k}={v}\n" for k, v in request.items()), encoding="utf-8")
-    mark = observe._console_mark(runner, project)
-    res = loop._call(runner, ["editor.playmode", "start"], project)
-    if not res["success"]:
-        req.unlink(missing_ok=True)
-        d["reason"], d["play_errors"] = "play_failed", res["errors"]
-        return d
-    d["entered_play"] = loop.settle(runner, project, timeout, await_gone=10, sleep=sleep, clock=clock)
-    got = _wait(wait_for, wait, sleep, clock) if d["entered_play"]["settled"] else None
-    d["console"] = observe._console_since(runner, project, mark, 20) if mark else {"read": False, "errors_seen": None}
-    if got is None or got != stay_on:
-        stop = loop._call(runner, ["editor.playmode", "stop"], project)
-        d["left_play"] = stop["success"] and loop.settle(runner, project, timeout, sleep=sleep, clock=clock)["settled"]
-    if got is None:
+    try:  # never leave a request behind: the next Play would pick it up
+        mark = observe._console_mark(runner, project)
+        res = loop._call(runner, ["editor.playmode", "start"], project)
+        if not res["success"]:
+            d["reason"], d["play_errors"] = "play_failed", res["errors"]
+            return d
+        d["entered_play"] = loop.settle(runner, project, timeout, await_gone=10, sleep=sleep, clock=clock)
+        got = None
         if not d["entered_play"]["settled"]:
             d["reason"] = d["entered_play"]["reason"]
-        else:  # a request still on disk was never read: the SDK isn't in the project
-            d["reason"] = "no_sdk" if req.exists() else "no_result"
+        elif not observe._playing(runner, project):
+            d["reason"], d["play_errors"] = "play_failed", [observe.NOT_PLAYING]
+        else:
+            got = _wait(wait_for, wait, sleep, clock)
+            if got is None:  # a request still on disk was never read: the SDK isn't in the project
+                d["reason"] = "no_sdk" if req.exists() else "no_result"
+        d["console"] = observe._console_since(runner, project, mark, 20) if mark else {"read": False, "errors_seen": None}
+        if got is None or got != stay_on:
+            stop = loop._call(runner, ["editor.playmode", "stop"], project)
+            d["left_play"] = stop["success"] and loop.settle(runner, project, timeout, sleep=sleep, clock=clock)["settled"]
+        d["file"] = str(got) if got else None
+        return d
+    finally:
         req.unlink(missing_ok=True)
-    d["file"] = str(got) if got else None
-    return d
 
 
 def record(runner, project: str | None, name: str, frames: int = 600, fps: int = 60, seed: int = 0,
@@ -202,8 +216,8 @@ def run(runner, project: str | None, name: str, stop_at: int | None = None, tole
         d.update(reason="paused", frame=int(paused.read_text(encoding="utf-8").strip() or -1))
     elif d["file"]:
         d.update(compare(rec, _load(result), tolerance))
-        if d["reason"] == "match" and d["console"].get("errors_seen"):
-            d["reason"] = "errors"
+        if d["reason"] == "match":
+            d["reason"] = observe._console_verdict(d["console"]) or "match"
     d["ok"] = d["reason"] in ("match", "paused")
     return d
 
@@ -235,7 +249,7 @@ def _add_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--force", action="store_true", help="record: overwrite an existing recording")
     p.add_argument("--stop-at", type=int, default=None, metavar="FRAME",
                    help="run: pause the Editor on this replay frame and stay in Play Mode")
-    p.add_argument("--tolerance", type=float, default=1e-4, help="numeric marks may differ by this much (default 1e-4)")
+    p.add_argument("--tolerance", type=float, default=1e-4, help="decimal marks may differ by this much, absolute; whole numbers must match exactly (default 1e-4)")
     p.add_argument("--wait", type=float, default=None, help="seconds to wait for the SDK to finish (default from the frame count)")
     p.add_argument("--project-path", help="Unity project folder (default: the open Editor's)")
     p.add_argument("--timeout", type=float, default=120, help="seconds to wait for a ready Editor (default 120)")

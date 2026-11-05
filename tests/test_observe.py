@@ -15,10 +15,12 @@ def ok(result):
 
 class Editor:
     def __init__(self, errors_in_play=(), objects=("Main Camera",), spawn=(), playing=False, reload_polls=2,
-                 read_fails=False, capture_fails=False):
+                 read_fails=False, capture_fails=False, paused=False, play_ignored=False, console_fails=False,
+                 console_reset=False):
         self.objects, self.spawn, self.errors_in_play = list(objects), list(spawn), list(errors_in_play)
         self.playing, self.reload, self.reload_polls = playing, 0, reload_polls
         self.read_fails, self.capture_fails = read_fails, capture_fails
+        self.paused, self.play_ignored, self.console_fails, self.console_reset = paused, play_ignored, console_fails, console_reset
         self.console, self.calls = [], []
 
     def __call__(self, args):
@@ -37,10 +39,13 @@ class Editor:
             return ok({"roots": [{"name": n, "hierarchyPath": "/" + n, "instanceId": id(self) % 1000 + i + 1000 * self.playing}
                                  for i, n in enumerate(self.objects)]})
         if cmd == ["editor", "status"]:
-            return ok({"playMode": "playing" if self.playing else "stopped"})
+            return ok({"playMode": ("paused" if self.paused else "playing") if self.playing else "stopped"})
         if args[1] == "editor.playmode":
             if args[2] == "start":
-                self.playing, self.reload = True, self.reload_polls
+                self.reload = self.reload_polls
+                if self.play_ignored:  # e.g. compile errors: the CLI says yes, the Editor stays in Edit Mode
+                    return ok("Entered play mode")
+                self.playing = True
                 self.objects += self.spawn
                 for msg in self.errors_in_play:
                     self.console.append({"seq": len(self.console) + 1, "level": "error", "message": msg,
@@ -49,10 +54,13 @@ class Editor:
             self.playing = False
             return ok("Exited play mode")
         if cmd == ["console", "status"]:
+            if self.console_fails:
+                return 1, {"success": False, "errors": [{"code": "COMMAND_FAILED", "message": "console unavailable"}]}
             return ok({"entries": [], "cursor": len(self.console), "session": "s1"})
         if cmd == ["console", "get"]:
             since = int(args[args.index("--since") + 1])
-            return ok({"entries": self.console[since:], "cursor": len(self.console), "session": "s1"})
+            return ok({"entries": self.console[since:], "cursor": len(self.console), "session": "s1",
+                       **({"reset": True} if self.console_reset else {})})
         if cmd == ["capture", "game_view"]:
             if self.capture_fails:
                 return 1, {"success": False, "errors": [{"code": "COMMAND_FAILED", "message": "no game view"}]}
@@ -117,6 +125,31 @@ def test_already_playing_is_watched_and_left_running():
     ed = Editor(playing=True)
     out = ob.observe(ed, P, **fast())
     assert out["ok"] and ed.playing and not any("playmode" in n for n in names(ed))
+
+
+def test_paused_editor_counts_as_play_mode_and_is_left_alone():
+    ed = Editor(playing=True, paused=True)
+    out = ob.observe(ed, P, **fast())
+    assert out["ok"] and ed.playing and ed.paused and not any("playmode" in n for n in names(ed))
+
+
+def test_unreadable_console_is_not_clean():
+    out = ob.observe(Editor(errors_in_play=["boom"], console_fails=True), P, **fast())
+    assert not out["ok"] and out["reason"] == "console_unread" and out["fault"] == "infra"
+    assert ob.observe(Editor(console_reset=True), P, **fast())["reason"] == "console_unread"
+    out = ob.observe(Editor(errors_in_play=["boom"], console_reset=True), P, **fast())
+    assert out["reason"] == "errors"  # errors that were read still count
+
+
+def test_settle_failing_after_play_starts_still_leaves_play():
+    ed = Editor(reload_polls=10**6)
+    out = ob.observe(ed, P, timeout=3, **fast())
+    assert out["reason"] == "no_editor" and not ed.playing and out["console"]["read"]
+
+
+def test_play_that_never_starts_is_play_failed():
+    out = ob.observe(Editor(play_ignored=True), P, **fast())
+    assert out["reason"] == "play_failed" and "diff" not in out
 
 
 def test_no_editor_is_infra():

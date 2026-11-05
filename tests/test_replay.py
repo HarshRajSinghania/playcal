@@ -1,6 +1,7 @@
 """replay against a fake Editor that also plays the SDK's part: on Play it reads .playcal/replays/request
 and writes NAME.replay / NAME.result / NAME.paused the way PlaycalReplay.cs does."""
 import json
+import time
 
 import pytest
 
@@ -24,8 +25,9 @@ def ok(result):
 class Editor:
     """result: text the SDK writes as NAME.result on replay (default: the recording's marks, i.e. a match)."""
 
-    def __init__(self, root, result=None, sdk=True, errors=(), playing=False):
+    def __init__(self, root, result=None, sdk=True, errors=(), playing=False, play_ignored=False, console_fails=False):
         self.root, self.result, self.sdk, self.errors = root, result, sdk, list(errors)
+        self.play_ignored, self.console_fails, self.request = play_ignored, console_fails, None
         self.folder = root / ".playcal" / "replays"
         self.playing, self.paused, self.frame, self.reload, self.console, self.calls = playing, False, -1, 0, [], []
 
@@ -44,7 +46,10 @@ class Editor:
                        "projectPath": str(self.root)})
         if args[1] == "editor.playmode":
             if args[2] == "start":
-                self.playing, self.reload = True, 2
+                self.reload = 2
+                if self.play_ignored:
+                    return ok("Entered play mode")
+                self.playing = True
                 self.console += [{"seq": len(self.console) + 1, "level": "error", "message": m, "stackTrace": ""}
                                  for m in self.errors]
                 if self.sdk:
@@ -53,6 +58,8 @@ class Editor:
             self.playing = False
             return ok("Exited play mode")
         if cmd == ["console", "status"]:
+            if self.console_fails:
+                return 1, {"success": False, "errors": [{"code": "COMMAND_FAILED", "message": "console unavailable"}]}
             return ok({"entries": [], "cursor": len(self.console), "session": "s1"})
         if cmd == ["console", "get"]:
             return ok({"entries": self.console[int(args[args.index("--since") + 1]):], "cursor": len(self.console)})
@@ -68,7 +75,7 @@ class Editor:
         req = self.folder / "request"
         if not req.exists():
             return
-        r = dict(ln.split("=", 1) for ln in req.read_text(encoding="utf-8").splitlines())
+        r = self.request = dict(ln.split("=", 1) for ln in req.read_text(encoding="utf-8").splitlines())
         req.unlink()
         name = r["name"]
         if r["mode"] == "record":
@@ -124,6 +131,18 @@ def test_compare_numbers_within_tolerance_match():
     b = rp.parse(REC.replace("pos 0.5", "pos 0.50001"))
     assert rp.compare(a, b)["reason"] == "match"
     assert rp.compare(a, b, tolerance=1e-9)["reason"] == "diverged"
+
+
+def test_compare_whole_numbers_must_match_exactly():
+    score = "playcal-replay 1\n5 mark score {}\n9 end\n"
+    assert rp.compare(rp.parse(score.format(10001)), rp.parse(score.format(10002)))["reason"] == "diverged"
+    # the tolerance is absolute, so it doesn't widen for big numbers
+    assert rp.compare(rp.parse(score.format(10000.5)), rp.parse(score.format(10000.6)))["reason"] == "diverged"
+
+
+def test_compare_without_marks_is_not_a_match():
+    empty = rp.parse("playcal-replay 1\n59 end\n")
+    assert rp.compare(empty, empty)["reason"] == "no_marks"
 
 
 def test_compare_names_first_divergence():
@@ -193,6 +212,41 @@ def test_run_without_sdk_says_so(root):
 def test_run_refuses_while_playing(root):
     recorded(root)
     assert rp.run(Editor(root, playing=True), str(root), "jump", **clock())["reason"] == "already_playing"
+
+
+def test_run_refuses_while_paused(root):
+    recorded(root)
+    ed = Editor(root, playing=True)
+    ed.paused = True
+    assert rp.run(ed, str(root), "jump", **clock())["reason"] == "already_playing"
+
+
+def test_run_with_unreadable_console_is_not_a_match(root):
+    recorded(root)
+    out = rp.run(Editor(root, console_fails=True), str(root), "jump", **clock())
+    assert out["reason"] == "console_unread" and not out["ok"]
+
+
+def test_run_where_play_never_starts_is_play_failed_not_no_sdk(root):
+    recorded(root)
+    out = rp.run(Editor(root, play_ignored=True), str(root), "jump", wait=5, **clock())
+    assert out["reason"] == "play_failed"
+    assert not (root / ".playcal" / "replays" / "request").exists()
+
+
+def test_request_is_stamped_and_removed_when_interrupted(root):
+    recorded(root)
+    ed = Editor(root)
+    rp.run(ed, str(root), "jump", **clock())
+    assert abs(int(ed.request["created"]) - time.time()) < 60  # the SDK ignores old requests
+
+    def runner(args):
+        if args[1:3] == ["editor.playmode", "start"]:
+            raise KeyboardInterrupt
+        return ed(args)
+    with pytest.raises(KeyboardInterrupt):
+        rp.run(runner, str(root), "jump", **clock())
+    assert not (root / ".playcal" / "replays" / "request").exists()
 
 
 def test_run_missing_or_bad_recording(root):
