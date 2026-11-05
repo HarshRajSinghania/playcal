@@ -6,6 +6,7 @@
 - `visual` reads 16-bit PNGs too (grey, RGB, RGBA); they are compared at 8 bits, the high byte of each sample (#1).
 - `logs` reads `adb logcat` dumps: the threadtime prefix is stripped and only the Unity tag is counted (#3).
 - `bench/live.py --scenario NAME` runs a single scenario (#2).
+- `doctor` prints the Unity CLI version on its `unity cli` line, so a bug report carries it.
 
 ## 0.1.2 (2026-11-05)
 

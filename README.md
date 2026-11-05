@@ -296,7 +296,7 @@ Run it first when something won't start. It checks Python, git, the Unity CLI, e
 
 ```bash
 playcal doctor --project C:/Games/MyGame
-# ok    unity cli: answers
+# ok    unity cli: 1.0.0-beta.12
 # fail  editor C:\Games\MyGame: running but not answering; usually a modal dialog is open in the Editor
 ```
 

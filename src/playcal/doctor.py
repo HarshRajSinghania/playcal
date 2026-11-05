@@ -6,7 +6,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,7 +31,7 @@ def diagnose(runner: Runner, project: str | None = None) -> list[dict]:
     if not env.get("success", code == 0):
         add("unity cli", "fail", "; ".join(e.get("message", "") for e in errs) or f"pipeline list exited {code}")
         return out
-    add("unity cli", "ok", "answers")
+    add("unity cli", "ok", _cli_version() or "answers")
     insts = (env.get("data") or {}).get("instances") or []
     if project:
         insts = [i for i in insts if _path(i) and _norm(_path(i)) == _norm(project)]
@@ -56,6 +58,16 @@ def diagnose(runner: Runner, project: str | None = None) -> list[dict]:
         except (OSError, json.JSONDecodeError) as e:
             add("sdk", "warn", f"can't read {manifest}: {e}")
     return out
+
+
+def _cli_version() -> str | None:
+    """`unity --version` prints plain text, not the JSON envelope, so it doesn't go through the runner."""
+    try:
+        p = subprocess.run([os.environ.get("PLAYCAL_UNITY", "unity"), "--version"], capture_output=True,
+                           text=True, encoding="utf-8", timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return p.stdout.strip().splitlines()[0] if p.returncode == 0 and p.stdout.strip() else None
 
 
 def _add_args(p: argparse.ArgumentParser) -> None:

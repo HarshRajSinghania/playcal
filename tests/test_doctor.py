@@ -32,3 +32,13 @@ def test_project_filter_and_sdk_check(tmp_path):
                                                  encoding="utf-8")
     s = status(diagnose(runner_with([{"projectPath": str(tmp_path / "Other"), "isRunning": True}]), str(proj)))
     assert s["editor"] == "warn" and s["sdk"] == "ok"
+
+
+def test_cli_version_is_shown(monkeypatch):
+    from playcal import doctor
+
+    monkeypatch.setattr(doctor, "_cli_version", lambda: "1.0.0-beta.12")
+    detail = {c["check"]: c["detail"] for c in diagnose(runner_with([]))}
+    assert detail["unity cli"] == "1.0.0-beta.12"
+    monkeypatch.setattr(doctor, "_cli_version", lambda: None)
+    assert {c["check"]: c["detail"] for c in diagnose(runner_with([]))}["unity cli"] == "answers"
