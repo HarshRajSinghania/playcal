@@ -10,8 +10,7 @@ def status(*states, project="C:/Games/Lab"):
 
 
 class Fake:
-    """Plays back `unity status` envelopes in order (the last one repeats) and records every call.
-    `job batch` runs each op through the same replies and answers the way Pipeline 0.10 does."""
+    """Plays back `unity status` envelopes in order (the last one repeats) and records every call."""
 
     def __init__(self, statuses, command=(0, {"success": True, "data": {"ok": 1}}), pipeline=None):
         self.statuses, self.command, self.calls = list(statuses), command, []
@@ -23,23 +22,10 @@ class Fake:
             return 0, self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
         if args[0] == "pipeline":
             return 0, self.pipeline
-        if args[1] == "job":
-            items = []
-            for op in json.loads(args[args.index("--operations") + 1]):
-                rc, env = self.reply(op["command"].split()[0])
-                ok = bool(env.get("success")) and rc == 0
-                items.append({"command": op["command"], "success": ok, "result": (env.get("data") or {}).get("result"),
-                              **({} if ok else {"error": (env.get("errors") or [{}])[0]})})
-            return 0, {"success": True, "data": {"result": {"results": items}}}
-        return self.reply(args[1])
-
-    def reply(self, name):
-        if not isinstance(self.command, dict):
-            return self.command
-        if name not in self.command:
-            return 1, {"success": False, "errors": [{"code": "UNKNOWN_COMMAND", "message": name}]}
-        reply = self.command[name]  # a list plays back in order
-        return reply.pop(0) if isinstance(reply, list) and len(reply) > 1 else reply[0] if isinstance(reply, list) else reply
+        if isinstance(self.command, dict):  # per-command replies; a list plays back in order
+            reply = self.command[args[1]]
+            return reply.pop(0) if isinstance(reply, list) and len(reply) > 1 else reply[0] if isinstance(reply, list) else reply
+        return self.command
 
 
 def fast(**kw):
@@ -85,8 +71,7 @@ def test_run_settles_on_both_sides_and_passes_project():
     out = loop.run_command(fake, "save_scene", ["--name", "x"], project="C:/Games/Lab", **fast())
     assert out["ok"] and out["reason"] == "ready" and out["result"]["data"] == {"ok": 1}
     cmd = [c for c in fake.calls if c[0] == "command"]
-    assert cmd == [["command", "save_scene", "--name", "x", "--project-path", "C:/Games/Lab"],
-                   ["command", "editor", "status", "--project-path", "C:/Games/Lab"]]
+    assert cmd == [["command", "save_scene", "--name", "x", "--project-path", "C:/Games/Lab"]]
 
 
 def test_run_does_not_fire_into_a_busy_editor():
@@ -122,81 +107,27 @@ def test_cli_params_after_double_dash(monkeypatch):
 
 
 def scene(*names):
-    return 0, {"success": True, "data": {"command": "get_hierarchy", "target": {"port": 7800},
-                                         "result": {"objects": [{"name": n} for n in names]}}}
-
-
-def editor(status="ready", compiling=False, reloading=False):
-    return 0, {"success": True, "data": {"result": {"status": status, "compiling": compiling,
-                                                    "domainReloadInProgress": reloading, "codeLoadCount": 46}}}
+    return 0, {"success": True, "data": {"objects": [{"name": n} for n in names]}}
 
 
 def test_verify_catches_a_write_that_did_not_land():
     fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}),
                                             "get_hierarchy": scene("Main Camera")})
     out = loop.run_command(fake, "create", ["--name", "Probe"], verify=["get_hierarchy"],
-                           expect=["result.objects.*.name=Probe"], **fast())
+                           expect=["objects.*.name=Probe"], **fast())
     assert not out["ok"] and out["reason"] == "verify_failed" and out["fault"] == "task"
     assert out["checks"][0]["actual"] == ["Main Camera"]
 
 
 def test_verify_and_diff_on_success():
-    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}), "editor": editor(),
+    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}),
                                             "get_hierarchy": [scene("Main Camera"), scene("Main Camera", "Probe")]})
-    out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["result.objects.*.name=Probe"],
+    out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["objects.*.name=Probe"],
                            want_diff=True, **fast())
     assert out["ok"] and out["fault"] is None and out["checks"][0]["ok"]
-    assert out["diff"] == [{"path": "result.objects[name=Probe]", "added": {"name": "Probe"}}]  # no echo noise
+    assert out["diff"] == [{"path": "objects[name=Probe]", "added": {"name": "Probe"}}]
     order = [c[1] for c in fake.calls if c[0] == "command"]
-    assert order == ["get_hierarchy", "create", "job"]
-
-
-def test_quiet_write_reads_back_in_the_same_call_as_the_status_check():
-    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}), "editor": editor(),
-                                            "get_hierarchy": scene("Probe")})
-    out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["result.objects.*.name=Probe"], **fast())
-    assert out["ok"] and out["after"]["via"] == "editor status" and out["after"]["code_load_count"] == 46
-    assert sum(c[0] == "status" for c in fake.calls) == 2  # only the settle before the write
-    ops = json.loads(next(c for c in fake.calls if c[:2] == ["command", "job"])[4])
-    assert ops == [{"command": "editor status", "params": {}}, {"command": "get_hierarchy", "params": {}}]
-
-
-def test_quiet_write_without_verify_checks_editor_status_once():
-    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}), "editor": editor()})
-    out = loop.run_command(fake, "create", [], **fast())
-    assert out["ok"] and out["after"]["via"] == "editor status"
-    assert [c[1:3] for c in fake.calls if c[0] == "command"] == [["create"], ["editor", "status"]]
-
-
-def test_busy_or_silent_editor_status_falls_back_to_settle():
-    for reply in (editor(compiling=True), editor(reloading=True), editor(status="busy"), None):
-        command = {"create": (0, {"success": True, "data": {}}), "get_hierarchy": scene("Probe")}
-        if reply:
-            command["editor"] = reply
-        fake = Fake([status("ready")], command=command)
-        out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["result.objects.*.name=Probe"],
-                               **fast())
-        assert out["ok"] and "via" not in out["after"] and sum(c[0] == "status" for c in fake.calls) == 4
-        assert [c[1] for c in fake.calls if c[0] == "command"][-1] == "get_hierarchy"  # read again after settle
-
-
-def test_write_that_starts_a_reload_keeps_the_settle_path():
-    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {"requiresRecompile": True}}),
-                                            "editor": editor()})
-    out = loop.run_command(fake, "create", [], **fast())
-    assert out["ok"] and "via" not in out["after"] and not any(c[1] in ("job", "editor") for c in fake.calls
-                                                                if c[0] == "command")
-
-
-def test_compile_keeps_the_settle_path():
-    fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}), "editor": editor()})
-    fake_rc = fake.__call__
-
-    def runner(args):
-        return (0, {"success": True, "data": {"status": "skipped"}}) if args[0] == "recompile" else fake_rc(args)
-
-    out = loop.run_command(runner, "create", [], compile=True, **fast())
-    assert out["ok"] and "via" not in out["after"] and out["compile"]["ok"]
+    assert order == ["get_hierarchy", "create", "get_hierarchy"]
 
 
 def test_expect_without_verify_checks_the_command_result():
@@ -232,7 +163,7 @@ def test_checkpoint_before_write_and_undo_hint_on_failure(tmp_path):
     (tmp_path / "a.txt").write_text("x")
     fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}),
                                             "get_hierarchy": scene("Main Camera")})
-    out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["result.objects.*.name=Probe"],
+    out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["objects.*.name=Probe"],
                            checkpoint=str(tmp_path), **fast())
     assert out["checkpoint"]["saved"] and out["undo"] == f"playcal checkpoint restore {out['checkpoint']['id']}"
 

@@ -32,6 +32,39 @@ EXIT = {"clean": 0, "errors": 1, "expect_failed": 1, "read_failed": 1, "play_fai
 NOT_PLAYING = {"code": "NOT_PLAYING", "message": "the Editor didn't enter Play Mode (compile errors block it)"}
 
 
+def _op(argv: Sequence[str]) -> dict | None:
+    """`scene get_hierarchy --path X` as a batch op: {"command": "scene get_hierarchy", "params": {"path": "X"}}.
+    None when the words don't fit that shape (a stray positional argument)."""
+    words = list(argv)
+    i = next((k for k, w in enumerate(words) if w.startswith("--")), len(words))
+    params, rest = {}, words[i:]
+    while rest:
+        flag = rest.pop(0)
+        if not flag.startswith("--"):
+            return None
+        key, eq, val = flag[2:].partition("=")
+        params[key] = val if eq else rest.pop(0) if rest and not rest[0].startswith("--") else True
+    return {"command": " ".join(words[:i]), "params": params} if i else None
+
+
+def _reads(runner, project, reads: Sequence[Sequence[str]]) -> list[dict]:
+    """Several Editor reads in one `job batch` call; each result looks like loop._call's. A read that
+    fails inside the batch (not batchable, or an older Pipeline without `job batch`) runs again on
+    its own, so its error is the one the plain command gives."""
+    ops = [_op(r) for r in reads]
+    out: list = [None] * len(reads)
+    if sum(o is not None for o in ops) > 1:
+        res = loop._call(runner, ["job", "batch", "--operations", json.dumps([o for o in ops if o]),
+                                  "--on-error", "continue"], project)
+        items = iter((((res["data"] or {}).get("result") or {}).get("results") or []) if res["success"] else [])
+        for k, o in enumerate(ops):
+            item = next(items, None) if o else None
+            if o and item and item.get("success"):
+                out[k] = {"success": True, "exit_code": 0, "errors": [], "warnings": [],
+                          "data": {"command": o["command"], "parameters": o["params"], "result": item.get("result")}}
+    return [r or loop._call(runner, list(argv), project) for r, argv in zip(out, reads)]
+
+
 def _mark(res: dict) -> dict | None:
     r = ((res["data"] or {}).get("result") or {}) if res["success"] else {}
     return {"cursor": r["cursor"], "session": r.get("session")} if "cursor" in r else None
@@ -107,7 +140,7 @@ def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", 
     if not d["before"]["settled"]:
         return done(d["before"]["reason"])
     t_ask = clock()
-    first, con_mark, status = loop._reads(runner, project, [list(read), ["console", "status"], ["editor", "status"]])
+    first, con_mark, status = _reads(runner, project, [list(read), ["console", "status"], ["editor", "status"]])
     t_watch = clock()
     if not first["success"]:
         d["read_errors"] = first["errors"]
@@ -127,7 +160,7 @@ def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", 
             d["entered_play"] = _enter_play(runner, project, timeout, sleep, clock)
             t_watch = clock()
             if not d["entered_play"]["playing"]:
-                d["console"] = _console(loop._reads(runner, project, since)[0] if mark else None, 20)
+                d["console"] = _console(_reads(runner, project, since)[0] if mark else None, 20)
                 if d["entered_play"]["busy"]:
                     return done("timeout")
                 d["play_errors"] = [NOT_PLAYING]
@@ -135,7 +168,7 @@ def observe(runner, project: str | None = None, read: Sequence[str] = ("scene", 
         sleep(max(0.0, seconds - (clock() - t_watch)))
 
         t_read = clock()
-        second, *con = loop._reads(runner, project, [list(read), *since])
+        second, *con = _reads(runner, project, [list(read), *since])
         d["played_ms"] = {"min": round((t_read - t_watch) * 1000), "max": round((clock() - t_ask) * 1000)}
         d["console"] = _console(con[0] if con else None, 20)
         d["checks"] = [checks.check(second["data"], e) for e in expect] if second["success"] else []

@@ -138,7 +138,7 @@ def _session(runner, project: str | None, folder: Path, request: dict, wait_for:
     if not d["before"]["settled"]:
         d["reason"] = d["before"]["reason"]
         return d
-    con_mark, status = loop._reads(runner, project, [["console", "status"], ["editor", "status"]])
+    con_mark, status = observe._reads(runner, project, [["console", "status"], ["editor", "status"]])
     if observe._playing(status):
         d["reason"] = "already_playing"  # the request is only read when Play starts
         return d
