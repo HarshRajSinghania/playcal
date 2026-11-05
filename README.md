@@ -364,6 +364,8 @@ No time for a PR? Running four commands against your own project and posting wha
 
 [CONTRIBUTING.md](CONTRIBUTING.md) has the setup (`pip install -e ".[dev]"` and `pytest`, no Unity needed for most of it) and the few ground rules. Please also read the [code of conduct](CODE_OF_CONDUCT.md). Security problems go through [SECURITY.md](SECURITY.md), not public issues.
 
+Small, well-described tasks are under [`good first issue`](https://github.com/RizgarOzan/playcal/labels/good%20first%20issue). If playcal saved you a debugging session, a star helps other Unity people find it.
+
 ## License
 
 [Apache-2.0](LICENSE). Use it in commercial games. The patent grant is there so studios don't have to ask.
