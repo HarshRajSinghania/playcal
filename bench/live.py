@@ -120,10 +120,10 @@ def read_cost(project) -> dict:
 SCENARIOS = ["clean", "during_reload", "play_mode", "bad_value"]
 
 
-def run(project, repeat) -> dict:
+def run(project, repeat, scenarios=SCENARIOS) -> dict:
     rows, made = [], []
     for i in range(repeat):
-        for scenario in SCENARIOS:
+        for scenario in scenarios:
             for agent, fn in (("naive", naive), ("playcal", playcal)):
                 name = f"BenchLive_{scenario}_{agent}_{i}"
                 made.append(name)
@@ -151,13 +151,16 @@ def main(argv=None) -> int:
     p.add_argument("--project-path", required=True)
     p.add_argument("--repeat", type=int, default=3)
     p.add_argument("--json", action="store_true")
+    p.add_argument("--scenario", action="append", choices=SCENARIOS, metavar="NAME",
+                   help="run only this scenario; repeat the flag for more (default: all)")
     a = p.parse_args(argv)
-    out = run(a.project_path, a.repeat)
+    scenarios = a.scenario or SCENARIOS
+    out = run(a.project_path, a.repeat, scenarios)
     if a.json:
         print(json.dumps(out))
         return 0
     print(f"{'scenario':<15}{'agent':<9}{'landed':>7}{'said ok':>9}{'FALSE OK':>10}{'median s':>10}")
-    for scenario in SCENARIOS:
+    for scenario in scenarios:
         for agent in ("naive", "playcal"):
             rs = [r for r in out["rows"] if r["scenario"] == scenario and r["agent"] == agent]
             secs = sorted(r["seconds"] for r in rs)[len(rs) // 2]
@@ -165,7 +168,8 @@ def main(argv=None) -> int:
                   f"{sum(r['reported_ok'] for r in rs):>6}/{len(rs)}{sum(r['false_success'] for r in rs):>7}/{len(rs)}"
                   f"{secs:>10}")
     caught = [r["window_caught"] for r in out["rows"] if "window_caught" in r]
-    print(f"reload window caught in {sum(caught)}/{len(caught)} during_reload runs")
+    if caught:
+        print(f"reload window caught in {sum(caught)}/{len(caught)} during_reload runs")
     c = out["read_cost"]
     print(f"read cost: full hierarchy {c['full_hierarchy_bytes']} bytes, playcal query {c['query_bytes']} bytes")
     return 0
