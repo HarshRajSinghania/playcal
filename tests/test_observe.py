@@ -4,7 +4,7 @@ after it; `job batch` returns one result per op, a refused op carries `error`; c
 seq, level, message, stackTrace)."""
 import json
 
-from playcal import observe as ob
+from playcal import loop, observe as ob
 from playcal.cli import main
 
 P = "C:/Games/Lab"
@@ -137,10 +137,10 @@ def test_a_read_the_batch_refuses_runs_on_its_own():
 
 
 def test_op_turns_cli_words_into_batch_params():
-    assert ob._op(["gameobject", "get", "--path", "/Player", "--with-children", "--depth=2"]) == {
+    assert loop._op(["gameobject", "get", "--path", "/Player", "--with-children", "--depth=2"]) == {
         "command": "gameobject get", "params": {"path": "/Player", "with-children": True, "depth": "2"}}
-    assert ob._op(["scene", "get_hierarchy"]) == {"command": "scene get_hierarchy", "params": {}}
-    assert ob._op(["a", "b", "--k", "v", "stray"]) is None and ob._op(["--k", "v"]) is None
+    assert loop._op(["scene", "get_hierarchy"]) == {"command": "scene get_hierarchy", "params": {}}
+    assert loop._op(["a", "b", "--k", "v", "stray"]) is None and loop._op(["--k", "v"]) is None
 
 
 def test_errors_from_before_the_run_dont_count():

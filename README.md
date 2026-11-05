@@ -328,17 +328,17 @@ Every row is one module. A module is a Python entry point in the `playcal.module
 
 | Editor state | naive landed | playcal landed | false successes (either) | median time naive / playcal |
 |---|---|---|---|---|
-| idle | 3/3 | 3/3 | 0 | 2.7 s / 24.0 s |
-| mid domain reload | **0/3** | **3/3** | 0 | 2.6 s / 51.7 s |
-| in Play Mode (write refused) | 0/3 | 0/3 | 0 | 2.8 s / 28.1 s |
-| bad value (string into a float) | 0/3 | 0/3 | 0 | 3.5 s / 21.9 s |
+| idle | 3/3 | 3/3 | 0 | 2.2 s / 14.9 s |
+| mid domain reload | **0/3** | **3/3** | 0 | 2.4 s / 14.3 s |
+| in Play Mode (write refused) | 0/3 | 0/3 | 0 | 2.8 s / 24.8 s |
+| bad value (string into a float) | 0/3 | 0/3 | 0 | 2.0 s / 11.3 s |
 
 What this says, plainly:
 
 - A write sent while Unity reloads is dropped by the plain CLI and lands through playcal. The reload window was really hit in 6 of 6 runs.
 - Unity's CLI is stricter than I expected. It refused Play Mode writes and bad values loudly, so neither side reported a single false success here. playcal's digest does add which kind of failure it was (`fault: task` for both of those), so an agent knows not to just retry.
-- playcal is slow. Each `unity status` poll takes 2–3 s and settle wants two in a row, before and after the command. Making that faster is the first open issue.
-- Reading the names of a few objects: the full `scene get_hierarchy` was 5174 bytes, `playcal query` 682. The test scene is tiny; the gap grows with the scene.
+- playcal is still 6–7x slower than a bare call. Every `unity` call costs about 3 s, and part of that is the CLI sending usage analytics on `status`. Before the command, settle wants two ready polls in a row. After it, a write that starts no reload is checked with one `editor status` call that also does the read-back, so a write is 4 calls instead of 6. That took the idle case from 24 s to 15 s and the mid-reload case from 52 s to 14 s ([#4](https://github.com/RizgarOzan/playcal/issues/4)).
+- Reading the names of a few objects: the full `scene get_hierarchy` was 5216 bytes, `playcal query` 682. The test scene is tiny; the gap grows with the scene.
 
 Not measured yet: an MCP server as a third arm, agent token use over a whole task, and the unfocused-Editor and modal-dialog cases on a live Editor. [`bench/sim.py`](bench/sim.py) replays those against a scripted Editor in CI, plus a write that lands but makes the game throw once Play starts (`loop` alone calls that a success; `observe` catches it). It's a regression guard, not evidence about Unity.
 

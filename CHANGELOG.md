@@ -4,7 +4,7 @@
 
 First public release. Everything here runs without Unity except `loop`, `observe`, `replay`, `doctor`'s Editor checks and the Unity SDK; those were checked on a live Unity 6000.3 Editor with Pipeline 0.10.0-exp.1.
 
-- `loop`: settle, run one Editor command, settle again, read back and assert, one JSON digest with `fault: infra|task`.
+- `loop`: settle, run one Editor command, settle again, read back and assert, one JSON digest with `fault: infra|task`. After a write that starts no reload, one `job batch` call checks `editor status` and does the read-back, so a write is 4 CLI calls instead of 6 (idle write ~15 s live, was ~24 s). `--diff` no longer reports the request echo as a change.
 - `logs`, `query`, `snap`, `checkpoint`, `lock`, `doctor`.
 - `observe`: press Play, run the game a few seconds, report console errors, `--expect` checks and the scene diff; a Game view screenshot only when the run goes red. Reads go through `job batch` and Play Mode is checked with `editor status`, so a clean run is 7 CLI calls (~33 s live) instead of 16 (~70 s); `played_ms` says how long the game really ran.
 - `replay`: record input through the SDK, play it back with a fixed frame rate and seed, report the first frame where the marks differ; stop on a frame and step from there.

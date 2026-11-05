@@ -30,7 +30,7 @@
 - Unity SDK: add `https://github.com/RizgarOzan/playcal.git?path=/unity/com.playcal.sdk` in Package Manager. API in unity/com.playcal.sdk/README.md.
 
 ## Docs
-- [README](README.md): what it is, roadmap, live benchmark (writes during a domain reload: plain CLI 0/3 landed, loop run 3/3; loop is ~8x slower)
+- [README](README.md): what it is, roadmap, live benchmark (writes during a domain reload: plain CLI 0/3 landed, loop run 3/3; loop is ~6x slower)
 - [CONTRIBUTING](CONTRIBUTING.md): setup and ground rules
 - [Event schema](schema/event-v0.json): JSON Schema 2020-12, unknown fields rejected
 - [Privacy](PRIVACY.md): what is and isn't recorded
