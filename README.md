@@ -1,5 +1,7 @@
 # playcal
 
+<!-- mcp-name: io.github.rizgarozan/playcal -->
+
 [![test](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml/badge.svg)](https://github.com/RizgarOzan/playcal/actions/workflows/test.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/playcal.svg)](https://pypi.org/project/playcal/)
@@ -59,6 +61,7 @@ Do not change project files yet.
 `playcal mcp` is a stdio MCP server. Every module becomes a tool (`playcal_ingest`, `playcal_logs`, `playcal_loop`, ...), built from the same argument definitions as the CLI, so the two can't drift apart.
 
 ```bash
+# or pick it from the MCP Registry as io.github.rizgarozan/playcal
 claude mcp add --transport stdio playcal -- playcal mcp
 code --add-mcp '{"name":"playcal","type":"stdio","command":"playcal","args":["mcp"]}'
 ```
@@ -127,7 +130,7 @@ Exit code 1 means it found errors.
 
 `loop settle` waits until the Editor is really ready: two "ready" polls in a row, because a domain reload can flicker. While Unity compiles or reloads, `unity status` shows no Editor at all, so settle asks `unity pipeline list` why: Safe Mode, Unity running but stuck on a dialog (`editor_blocked`), or really no Editor. Two open Editors are reported too, instead of timing out on all of them.
 
-`loop run` settles, runs one `unity command`, settles again, and can check its own work:
+`loop run` checks the Editor is ready, runs one `unity command`, checks again, and can check its own work. Each check is one `editor status` call, which says outright whether the Editor is compiling or reloading; settle's polls are the fallback for a busy or silent Editor and for a write that starts a reload:
 
 ```bash
 playcal loop run "gameobject create" --verify "scene get_hierarchy" --expect "result.roots.*.name=Probe" --diff --json -- --name Probe
@@ -329,16 +332,17 @@ Every row is one module. A module is a Python entry point in the `playcal.module
 
 | Editor state | naive landed | playcal landed | false successes (either) | median time naive / playcal |
 |---|---|---|---|---|
-| idle | 3/3 | 3/3 | 0 | 2.2 s / 14.9 s |
-| mid domain reload | **0/3** | **3/3** | 0 | 2.4 s / 14.3 s |
-| in Play Mode (write refused) | 0/3 | 0/3 | 0 | 2.8 s / 24.8 s |
-| bad value (string into a float) | 0/3 | 0/3 | 0 | 2.0 s / 11.3 s |
+| idle | 3/3 | 3/3 | 0 | 2.2 s / 7.4 s |
+| mid domain reload | **0/3** | **3/3** | 0 | 2.2 s / 33.6 s (19–41 s, the reload itself) |
+| in Play Mode (write refused) | 0/3 | 0/3 | 0 | 3.9 s / 28.0 s |
+| bad value (string into a float) | 0/3 | 0/3 | 0 | 4.3 s / 5.4 s |
 
 What this says, plainly:
 
 - A write sent while Unity reloads is dropped by the plain CLI and lands through playcal. The reload window was really hit in 6 of 6 runs.
 - Unity's CLI is stricter than I expected. It refused Play Mode writes and bad values loudly, so neither side reported a single false success here. playcal's digest does add which kind of failure it was (`fault: task` for both of those), so an agent knows not to just retry.
-- playcal is still 6–7x slower than a bare call. Every `unity` call costs about 3 s, and part of that is the CLI sending usage analytics on `status`. Before the command, settle wants two ready polls in a row. After it, a write that starts no reload is checked with one `editor status` call that also does the read-back, so a write is 4 calls instead of 6. That took the idle case from 24 s to 15 s and the mid-reload case from 52 s to 14 s ([#4](https://github.com/RizgarOzan/playcal/issues/4)).
+- playcal is still about 3x slower than a bare call on a quiet Editor. Every `unity` call costs about 3 s, and part of that is the CLI sending usage analytics on `status`. Each ready check is one `editor status` call, with the read-back in the same batch, so a quiet write is 3 calls instead of the 6 it started at: the idle case went from 24 s to 15 s to 7 s ([#4](https://github.com/RizgarOzan/playcal/issues/4)). The mid-reload time is mostly the reload itself; it took 10 to 24 s on this run before the Pipeline server even went away, and 14 s on a quieter one.
+- The refused and bad-value cases take as long as the Editor takes to say no. Play Mode held the write for about 25 s before refusing it; the bad value came back in 5 s.
 - Reading the names of a few objects: the full `scene get_hierarchy` was 5216 bytes, `playcal query` 682. The test scene is tiny; the gap grows with the scene.
 
 Not measured yet: an MCP server as a third arm, agent token use over a whole task, and the unfocused-Editor and modal-dialog cases on a live Editor. [`bench/sim.py`](bench/sim.py) replays those against a scripted Editor in CI, plus a write that lands but makes the game throw once Play starts (`loop` alone calls that a success; `observe` catches it). It's a regression guard, not evidence about Unity.

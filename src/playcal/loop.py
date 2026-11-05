@@ -6,16 +6,17 @@
           gone look the same; Safe Mode and an Editor stuck on a dialog are told apart through
           `unity pipeline list`. --compile also runs `unity recompile`, because an Editor with
           compile errors still reports "ready".
-  run     settle -> unity command NAME ... -> settle again -> verify.
+  run     ready check -> unity command NAME ... -> ready check again -> verify.
           --verify "CMD ARGS" re-reads the Editor after the write, --expect PATH=VALUE checks
           the read (or the command's own result when there is no --verify), --diff shows only
           what changed in the --verify read between before and after. When the command says
-          it needs a recompile (package resolve does), the second settle first waits for the
+          it needs a recompile (package resolve does), the settle after it first waits for the
           reload to start, so a reload that begins a few seconds later isn't missed.
-          A write that doesn't ask for a reload skips the second settle: one `job batch` asks
-          `editor status` and runs the --verify read in the same call. The read counts only when
-          the Editor says it's ready, not compiling and not reloading; otherwise loop settles and
-          reads again. Every `unity` call costs about 3 s, so this is 4 calls a write instead of 6.
+          Each ready check is one `editor status` call, with the --diff snapshot or the --verify
+          read in the same `job batch`. It counts only when the Editor itself says it's ready, not
+          compiling and not reloading; anything else (busy, no answer, a write that starts a
+          reload, --compile) goes through settle's `unity status` polls instead. Every `unity`
+          call costs about 3 s, so a quiet write is 3 calls instead of the 6 it started at.
           A refused write gets the same `editor status` check without the read; if the Editor
           doesn't answer it, settle runs and says why.
 
@@ -243,9 +244,10 @@ def _state(data):
 
 
 def _idle_read(runner: Runner, project: str | None, verify: list[str] | None) -> tuple[dict, dict | None] | None:
-    """After a write that starts no reload: `editor status` and the --verify read in one batch call,
-    instead of two status polls and a separate read. Counts only when the Editor itself says it is
-    ready, not compiling and not reloading; None sends the caller back to settle."""
+    """One `editor status` call, with a read in the same batch when one is wanted, instead of two
+    `unity status` polls and a separate read. Used before the write (the read is the --diff snapshot)
+    and after a write that starts no reload (the read is --verify). Counts only when the Editor itself
+    says it is ready, not compiling and not reloading; None sends the caller back to settle."""
     t0 = time.monotonic()
     res = _reads(runner, project, [["editor", "status"], *([verify] if verify else [])])
     st = ((res[0]["data"] or {}).get("result") or {}) if res[0]["success"] else {}
@@ -262,14 +264,20 @@ def run_command(runner: Runner, name: str, params: list[str], project: str | Non
                 checkpoint: str | None = None, compile: bool = False, reload_wait: float | None = None,
                 **settle_kw) -> dict:
     t0 = time.monotonic()
-    digest: dict = {"command": name, "params": params, "before": settle(runner, project, timeout, **settle_kw)}
+    digest: dict = {"command": name, "params": params}
+    quick = _idle_read(runner, project, verify if verify and want_diff else None)
+    if quick:
+        digest["before"], snapshot = quick
+    else:
+        digest["before"], snapshot = settle(runner, project, timeout, **settle_kw), None
     if not digest["before"]["settled"]:
         digest["ok"], digest["reason"] = False, digest["before"]["reason"]
         digest["fault"] = _fault(digest["reason"], None)
         return digest
     if checkpoint is not None:
         digest["checkpoint"] = _save_checkpoint(checkpoint, f"before {name} {' '.join(params)}".strip())
-    snapshot = _call(runner, verify, project) if verify and want_diff else None
+    if snapshot is None and verify and want_diff:
+        snapshot = _call(runner, verify, project)
     digest["result"] = _call(runner, [name, *params], project)
     wait = reload_wait if reload_wait is not None else 20 if _wants_reload(digest["result"]["data"]) else 0
     ok = digest["result"]["success"]

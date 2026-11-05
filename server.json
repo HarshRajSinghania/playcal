@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.rizgarozan/playcal",
+  "description": "Edit-settle-verify loop, observe, replay and log tools for AI agents working in the Unity Editor",
+  "repository": {
+    "url": "https://github.com/RizgarOzan/playcal",
+    "source": "github"
+  },
+  "websiteUrl": "https://pypi.org/project/playcal/",
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "playcal",
+      "version": "0.1.1",
+      "runtimeHint": "uvx",
+      "packageArguments": [
+        { "type": "positional", "value": "mcp", "valueHint": "mcp" }
+      ],
+      "transport": { "type": "stdio" }
+    }
+  ]
+}

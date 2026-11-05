@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1 (2026-11-05)
+
+- `loop run`: the ready check before the write is one `editor status` call now, with the `--diff` snapshot in the same batch, instead of two `unity status` polls and a separate read. A quiet write is 3 CLI calls instead of 4 (idle write ~7 s live, was ~15 s; bad value ~5 s, was ~11 s). The polls stay as the fallback when the Editor is busy, silent, or about to reload.
+- Listed in the MCP Registry as `io.github.rizgarozan/playcal`; the release workflow publishes `server.json` after PyPI.
+
 ## 0.1.0 (2026-11-05)
 
 First public release. Everything here runs without Unity except `loop`, `observe`, `replay`, `doctor`'s Editor checks and the Unity SDK; those were checked on a live Unity 6000.3 Editor with Pipeline 0.10.0-exp.1.

@@ -85,15 +85,17 @@ def test_run_settles_on_both_sides_and_passes_project():
     out = loop.run_command(fake, "save_scene", ["--name", "x"], project="C:/Games/Lab", **fast())
     assert out["ok"] and out["reason"] == "ready" and out["result"]["data"] == {"ok": 1}
     cmd = [c for c in fake.calls if c[0] == "command"]
-    assert cmd == [["command", "save_scene", "--name", "x", "--project-path", "C:/Games/Lab"],
+    assert cmd == [["command", "editor", "status", "--project-path", "C:/Games/Lab"],
+                   ["command", "save_scene", "--name", "x", "--project-path", "C:/Games/Lab"],
                    ["command", "editor", "status", "--project-path", "C:/Games/Lab"]]
+    assert sum(c[0] == "status" for c in fake.calls) == 4  # editor status answered nothing useful, so settle polled
 
 
 def test_run_does_not_fire_into_a_busy_editor():
     fake = Fake([status("compiling")])
     out = loop.run_command(fake, "save_scene", [], timeout=2, **fast())
     assert not out["ok"] and out["reason"] == "timeout"
-    assert not any(c[0] == "command" for c in fake.calls)
+    assert not any(c[:2] == ["command", "save_scene"] for c in fake.calls)
 
 
 def test_failed_command_surfaces_error_code():
@@ -148,7 +150,8 @@ def test_verify_and_diff_on_success():
     assert out["ok"] and out["fault"] is None and out["checks"][0]["ok"]
     assert out["diff"] == [{"path": "result.objects[name=Probe]", "added": {"name": "Probe"}}]  # no echo noise
     order = [c[1] for c in fake.calls if c[0] == "command"]
-    assert order == ["get_hierarchy", "create", "job"]
+    assert order == ["job", "create", "job"]  # the snapshot rides in the ready check before the write
+    assert not any(c[0] == "status" for c in fake.calls)
 
 
 def test_quiet_write_reads_back_in_the_same_call_as_the_status_check():
@@ -156,7 +159,7 @@ def test_quiet_write_reads_back_in_the_same_call_as_the_status_check():
                                             "get_hierarchy": scene("Probe")})
     out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["result.objects.*.name=Probe"], **fast())
     assert out["ok"] and out["after"]["via"] == "editor status" and out["after"]["code_load_count"] == 46
-    assert sum(c[0] == "status" for c in fake.calls) == 2  # only the settle before the write
+    assert not any(c[0] == "status" for c in fake.calls) and out["before"]["via"] == "editor status"
     ops = json.loads(next(c for c in fake.calls if c[:2] == ["command", "job"])[4])
     assert ops == [{"command": "editor status", "params": {}}, {"command": "get_hierarchy", "params": {}}]
 
@@ -165,7 +168,7 @@ def test_quiet_write_without_verify_checks_editor_status_once():
     fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {}}), "editor": editor()})
     out = loop.run_command(fake, "create", [], **fast())
     assert out["ok"] and out["after"]["via"] == "editor status"
-    assert [c[1:3] for c in fake.calls if c[0] == "command"] == [["create"], ["editor", "status"]]
+    assert [c[1:3] for c in fake.calls if c[0] == "command"] == [["editor", "status"], ["create"], ["editor", "status"]]
 
 
 def test_busy_or_silent_editor_status_falls_back_to_settle():
@@ -185,7 +188,7 @@ def test_refused_write_checks_editor_status_once_and_skips_the_read():
     fake = Fake([status("ready")], command={"create": refused, "editor": editor(), "get_hierarchy": scene("Probe")})
     out = loop.run_command(fake, "create", [], verify=["get_hierarchy"], expect=["result.objects.*.name=Probe"], **fast())
     assert out["reason"] == "command_failed" and out["fault"] == "task" and out["after"]["via"] == "editor status"
-    assert [c[1:3] for c in fake.calls if c[0] == "command"] == [["create"], ["editor", "status"]]
+    assert [c[1:3] for c in fake.calls if c[0] == "command"] == [["editor", "status"], ["create"], ["editor", "status"]]
     gone = Fake([status("ready"), status("ready"), status("none")], command={"create": refused})
     out = loop.run_command(gone, "create", [], timeout=1, **fast())
     assert out["reason"] == "command_failed" and "via" not in out["after"]  # no answer: settle says why
@@ -195,7 +198,8 @@ def test_write_that_starts_a_reload_keeps_the_settle_path():
     fake = Fake([status("ready")], command={"create": (0, {"success": True, "data": {"requiresRecompile": True}}),
                                             "editor": editor()})
     out = loop.run_command(fake, "create", [], **fast())
-    assert out["ok"] and "via" not in out["after"] and not any(c[1] in ("job", "editor") for c in fake.calls
+    after_write = fake.calls[fake.calls.index(["command", "create"]) + 1:]
+    assert out["ok"] and "via" not in out["after"] and not any(c[1] in ("job", "editor") for c in after_write
                                                                 if c[0] == "command")
 
 
