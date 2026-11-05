@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- `playcal skill` now opens with a short "which command when" section, so an agent reading the SKILL.md knows the order: doctor, loop for every write, logs for the first cause.
+- `playcal skill` now opens with a short "which command when" section, so an agent reading the SKILL.md knows the order: doctor, loop for every write, logs for the first cause. The MCP server sends the same lines as `instructions` on initialize.
 - `visual` reads 16-bit PNGs too (grey, RGB, RGBA); they are compared at 8 bits, the high byte of each sample (#1).
 - `logs` reads `adb logcat` dumps: the threadtime prefix is stripped and only the Unity tag is counted (#3).
 - `bench/live.py --scenario NAME` runs a single scenario (#2).

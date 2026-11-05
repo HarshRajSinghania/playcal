@@ -105,7 +105,8 @@ def handle(msg: dict, mods: dict[str, Module]) -> dict | None:
         return None
     if method == "initialize":
         result = {"protocolVersion": msg.get("params", {}).get("protocolVersion", PROTOCOL),
-                  "capabilities": {"tools": {}}, "serverInfo": {"name": "playcal", "version": __version__}}
+                  "capabilities": {"tools": {}}, "serverInfo": {"name": "playcal", "version": __version__},
+                  "instructions": "playcal tools, which when (`playcal X` below is the tool playcal_X):\n" + "\n".join(GUIDE)}
     elif method == "ping":
         result = {}
     elif method == "tools/list":
@@ -141,22 +142,26 @@ def serve(stdin=None, stdout=None) -> int:
     return 0
 
 
+GUIDE = [  # one line per situation: shown at the top of SKILL.md and sent as MCP `instructions`
+    "- Before anything in a Unity project: `playcal doctor`. It says whether the CLI and an open Editor are reachable.",
+    "- Any Editor write (create, set_field, save_scene, recompile): `playcal loop run NAME -- ARGS` with `--verify` and `--expect`. "
+    "Never call `unity command` directly for a write; a success during a domain reload is not a landed change.",
+    "- Scripts changed: `playcal loop run ... --compile`, then `playcal logs --since \"Reloading assemblies\"` for the first cause.",
+    "- Something is red in the console: `playcal logs` first, it collapses repeats and names the first cause.",
+    "- Big command output: `playcal query` to keep only the fields you need instead of reading the whole hierarchy.",
+    "- Before a risky step: `playcal checkpoint save`; `playcal loop run --checkpoint` does it for you.",
+    "- Does it still run: `playcal observe` (press Play, diff the scene, collect errors), `playcal visual check` for a screenshot diff.",
+    "- Playtest data: `ingest` validates, `report` summarizes, `calibrate` predicts human pass rates from bot runs.",
+]
+
+
 def skill_md() -> str:
     lines = ["---", "name: playcal",
              "description: Game-dev toolkit for agents. Use to read playtest results, summarize Unity logs, "
              "and run Unity Editor commands safely (wait until ready, run, verify). Every command takes --json.",
              "---", "", "# playcal", "",
              "Run `playcal <command> --json` and read the JSON. Exit code 0 means ok.", "",
-             "## Which command when", "",
-             "- Before anything in a Unity project: `playcal doctor`. It says whether the CLI and an open Editor are reachable.",
-             "- Any Editor write (create, set_field, save_scene, recompile): `playcal loop run NAME -- ARGS` with `--verify` and `--expect`. "
-             "Never call `unity command` directly for a write; a success during a domain reload is not a landed change.",
-             "- Scripts changed: `playcal loop run ... --compile`, then `playcal logs --since \"Reloading assemblies\"` for the first cause.",
-             "- Something is red in the console: `playcal logs` first, it collapses repeats and names the first cause.",
-             "- Big command output: `playcal query` to keep only the fields you need instead of reading the whole hierarchy.",
-             "- Before a risky step: `playcal checkpoint save`; `playcal loop run --checkpoint` does it for you.",
-             "- Does it still run: `playcal observe` (press Play, diff the scene, collect errors), `playcal visual check` for a screenshot diff.",
-             "- Playtest data: `ingest` validates, `report` summarizes, `calibrate` predicts human pass rates from bot runs.", ""]
+             "## Which command when", "", *GUIDE, ""]
     for mod in load_modules():
         lines += [f"## playcal {mod.name}", "", mod.summary + ".", ""]
         for a in _actions(mod):

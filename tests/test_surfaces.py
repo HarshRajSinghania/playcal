@@ -42,6 +42,7 @@ def test_mcp_handshake_list_and_call():
                    "params": {"name": "playcal_report", "arguments": {"files": [str(FIX / "events-20.jsonl")]}}})
     assert [r["id"] for r in replies] == [1, 2, 3, 4]  # the notification gets no reply
     assert replies[0]["result"]["serverInfo"]["name"] == "playcal"
+    assert "playcal doctor" in replies[0]["result"]["instructions"]
     names = {t["name"] for t in replies[1]["result"]["tools"]}
     assert {"playcal_loop", "playcal_logs", "playcal_report", "playcal_ingest"} <= names
     logs = replies[2]["result"]
