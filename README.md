@@ -351,6 +351,8 @@ Predicting human difficulty with agents isn't a new idea. Roohi et al. ([2021](h
 
 The most useful thing you can send is a real case where an agent and a Unity Editor got out of sync: what the agent ran, what it said, what was actually true. There's an issue template for it. After that: new modules, and a Godot or Unreal backend if you know those editors' APIs.
 
+No time for a PR? Running four commands against your own project and posting what they printed in [Testers wanted](https://github.com/RizgarOzan/playcal/discussions/8) tells me more than another test I write myself.
+
 [CONTRIBUTING.md](CONTRIBUTING.md) has the setup (`pip install -e ".[dev]"` and `pytest`, no Unity needed for most of it) and the few ground rules. Please also read the [code of conduct](CODE_OF_CONDUCT.md). Security problems go through [SECURITY.md](SECURITY.md), not public issues.
 
 ## License
